@@ -1,0 +1,7 @@
+cd ../..
+git clone https://github.com/BNFC/bnfc.git
+git checkout 176-source-position
+cd bnfc/source
+make
+
+../../bnfc/source/dist/build/bnfc/bnfc -m --functor Latte.cf
