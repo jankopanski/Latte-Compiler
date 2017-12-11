@@ -72,6 +72,15 @@ data Type a
     = Int a | Str a | Bool a | Void a | Fun a (Type a) [Type a]
   deriving (Eq, Ord, Show, Read)
 
+-- instance Eq (Type e) where
+--   Int _ == Int _ = True
+--   Str _ == Str _ = True
+--   Bool _ == Bool _ = True
+--   Void _ == Void _ = True
+--   Fun _ ret1 args1 == Fun _ ret2 args2 =
+--     ret1 == ret2 && args1 == args2
+--   _ == _ = False
+
 instance Functor Type where
     fmap f x = case x of
         Int a -> Int (f a)

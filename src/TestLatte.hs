@@ -13,7 +13,7 @@ import SkelLatte
 import PrintLatte
 import AbsLatte
 
-
+import StaticAnalysis
 
 
 import ErrM
@@ -27,11 +27,11 @@ type Verbosity = Int
 putStrV :: Verbosity -> String -> IO ()
 putStrV v s = when (v > 1) $ putStrLn s
 
-runFile :: (Print a, Show a) => Verbosity -> ParseFun a -> FilePath -> IO ()
-runFile v p f = putStrLn f >> readFile f >>= run v p
+runFile :: Verbosity -> FilePath -> IO ()
+runFile v f = putStrLn f >> readFile f >>= run v
 
-run :: (Print a, Show a) => Verbosity -> ParseFun a -> String -> IO ()
-run v p s = let ts = myLLexer s in case p ts of
+run :: Verbosity -> String -> IO ()
+run v s = let ts = myLLexer s in case pProgram ts of
            Bad s    -> do putStrLn "\nParse              Failed...\n"
                           putStrV v "Tokens:"
                           putStrV v $ show ts
@@ -39,7 +39,7 @@ run v p s = let ts = myLLexer s in case p ts of
                           exitFailure
            Ok  tree -> do putStrLn "\nParse Successful!"
                           showTree v tree
-
+                          analise tree
                           exitSuccess
 
 
@@ -65,11 +65,6 @@ main = do
   args <- getArgs
   case args of
     ["--help"] -> usage
-    [] -> getContents >>= run 2 pProgram
-    "-s":fs -> mapM_ (runFile 0 pProgram) fs
-    fs -> mapM_ (runFile 2 pProgram) fs
-
-
-
-
-
+    [] -> getContents >>= run 2
+    "-s":fs -> mapM_ (runFile 0) fs
+    fs -> mapM_ (runFile 2) fs
