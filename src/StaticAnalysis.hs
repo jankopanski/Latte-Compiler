@@ -1,12 +1,13 @@
 module StaticAnalysis where
 
-import qualified Data.Map             as Map
+import qualified Data.Map as Map
+import Data.Maybe (isNothing, fromJust)
 
-import           Control.Monad.Except
-import           Control.Monad.Reader
-import           Control.Monad.State
+import Control.Monad.Except
+import Control.Monad.Reader
+import Control.Monad.State
 
-import           AbsLatte
+import AbsLatte
 
 type Name = String
 type TypeEnv = Map.Map Name (Type Position)
@@ -17,6 +18,12 @@ data Error
   | TypeMismatch (Type Position)
   | NoReturn Name Position
   | InvalidReturnType Position
+  | UnexpectedError Position
+  | UndefinedVariable Name Position
+  | UndefinedFunction Name Position
+  | VariableCall Name Position
+  | InvalidNumberOfArguments Name Position
+  | InvalidArgumentType Name Position
 type Checker a = ExceptT Error (State TypeScope) a
 type StatementChecker a = ReaderT (Type Position) (ExceptT Error (State TypeScope)) a
 type ExpressionChecker = StatementChecker (Type Position)
@@ -88,7 +95,7 @@ checkTopDef :: TopDef Position -> Checker ()
 checkTopDef (FnDef fpos ftype (Ident name) args block) = do
   mapM_ addArg args
   ret <- runReaderT (checkBlock block) ftype--(void ftype)
-  unless ret $ throwError (NoReturn name fpos)
+  unless ret $ throwError (NoReturn name fpos) -- void nie musi mieć return
 
 addArg :: Arg Position -> Checker ()
 addArg (Arg pos argtype (Ident name)) = do
@@ -129,29 +136,65 @@ checkStmt (Ret pos expr) = do
 
 checkExpr :: Expr Position -> ExpressionChecker
 
+checkExpr (EVar pos (Ident name)) = do
+  (inenv, outenv) <- get
+  case Map.lookup name inenv of
+    Just t -> return t
+    Nothing -> case Map.lookup name outenv of
+      Just t -> return t
+      Nothing -> throwError (UndefinedVariable name pos)
+
 checkExpr (ELitTrue pos) = return $ Bool pos
 
 checkExpr (ELitFalse pos) = return $ Bool pos
+
+checkExpr (EApp pos (Ident name) exprs) = do
+  exprtypes <- mapM checkExpr exprs
+  (inenv, outenv) <- get
+  let funtype = case Map.lookup name inenv of
+        Nothing -> Map.lookup name outenv
+        e -> e
+  when (isNothing funtype) $ throwError (UndefinedFunction name pos)
+  case fromJust funtype of
+    Fun _ rettype argtypes -> do
+      unless (length exprtypes == length argtypes) $
+        throwError (InvalidNumberOfArguments name pos)
+      unless (and $ zipWith (==) exprtypes argtypes) $
+        throwError (InvalidArgumentType name pos)
+      return (fmap (const pos) rettype)
+    _ -> throwError $ VariableCall name pos
 
 checkExpr (ELitInt pos _) = return $ Int pos
 
 checkExpr (EString pos _) = return $ Str pos
 
-checkExpr (Neg pos expr) =
-  let negtype = Int pos in
-  checkExpr expr >>= \exprtype -> if exprtype == negtype
-    then return negtype
-    else throwError $ TypeMismatch negtype
+checkExpr (Neg pos expr) = checkUnOp expr (Int pos)
 
-checkExpr (Not pos expr) =
-  let nottype = Bool pos in
-  checkExpr expr >>= \exprtype -> if exprtype == nottype
-    then return nottype
-    else throwError $ TypeMismatch nottype
+checkExpr (Not pos expr) = checkUnOp expr (Bool pos)
 
-checkExpr (EAdd pos expr1 _ expr2) = checkBinOp expr1 expr2 (Int pos)
+checkExpr (EAdd pos expr1 (Plus _) expr2) = do
+  exprtype1 <- checkExpr expr1
+  case exprtype1 of
+    Int _ -> checkUnOp expr2 (Int pos)
+    Str _ -> checkUnOp expr2 (Str pos)
+    Bool _ -> throwError $ TypeMismatch $ Bool pos
+    _ -> throwError $ UnexpectedError pos
+
+checkExpr (EAdd pos expr1 (Minus _) expr2) = checkBinOp expr1 expr2 (Int pos)
 
 checkExpr (EMul pos expr1 _ expr2) = checkBinOp expr1 expr2 (Int pos)
+
+checkExpr (ERel pos expr1 op expr2) = do
+  exprtype1 <- checkExpr expr1
+  exprtype2 <- checkExpr expr2
+  let reltype = fmap (const pos) exprtype1
+  unless (exprtype1 == exprtype2) $ throwError (TypeMismatch reltype)
+  case op of
+    EQU _ -> return reltype
+    NE _ -> return reltype
+    _ -> if reltype == Bool pos
+      then throwError (TypeMismatch reltype)
+      else return reltype
 
 checkExpr (EAnd pos expr1 expr2) = checkBinOp expr1 expr2 (Bool pos)
 
