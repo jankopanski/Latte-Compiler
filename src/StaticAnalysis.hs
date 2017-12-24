@@ -21,24 +21,56 @@ type TypeScope = (TypeEnv, TypeEnv)
 
 data Error
   = Redefinition Name Position Position
-  | TypeMismatchAnonymous (Type Position)
   | TypeMismatch Name (Type Position) (Type Position)
-  | InvalidReturnType Position
-  | UnexpectedError Position
+  | TypeMismatchAnonymous (Type Position)
   | UndefinedVariable Name Position
   | UndefinedFunction Name Position
   | VariableCall Name Position
   | InvalidNumberOfArguments Name Position
   | InvalidArgumentType Name Position
   | InvalidDeclarationType Position
+  | InvalidReturnType (Type Position)
+  | UnexpectedError Position
 instance Show Error where
-  show _ = "ala"
+  show (Redefinition name new old) =
+    showErrorPosition new ++ "Redefinition of '" ++ name ++
+      "'\n\tPreviously defined at " ++ showPosition old
+  show (TypeMismatch name actual expected) =
+    showErrorPosition (getPositionFromType actual) ++ "Type mismatch, used type " ++
+      show actual ++ ", expected " ++ show expected ++ ", " ++ name  ++
+      " was declared at " ++ showPosition (getPositionFromType expected)
+  show (TypeMismatchAnonymous t) =
+    showErrorPosition (getPositionFromType t) ++ "Expected type " ++ show t
+  show (UndefinedFunction name pos) =
+    showErrorPosition pos ++ "Undefined function " ++ name
+  show (UndefinedVariable name pos) =
+    showErrorPosition pos ++ "Undefined variable " ++ name
+  show (VariableCall name pos) =
+    showErrorPosition pos ++ name ++ " is not callable"
+  show (InvalidNumberOfArguments name pos) =
+    showErrorPosition pos ++ "Invalid number of arguments in call to function " ++ name
+  show (InvalidArgumentType name pos) =
+    showErrorPosition pos ++ "Invalid type of argument in call to function " ++ name
+  show (InvalidDeclarationType pos) =
+    showErrorPosition pos ++ "Invalid declaration type"
+  show (InvalidReturnType t) =
+    showErrorPosition (getPositionFromType t) ++ "Invalid type of return, expected " ++
+    show t
+  show (UnexpectedError pos) =
+    showErrorPosition pos ++ "Unexpected error"
 
 type Checker a = ExceptT Error (State TypeScope) a
 type StatementChecker a = ReaderT (Type Position) (ExceptT Error (State TypeScope)) a
 type ExpressionChecker = StatementChecker (Type Position)
 
 -- Helper functions --
+
+showPosition :: Position -> String
+showPosition Nothing = ""
+showPosition (Just (line, column)) = "line " ++ show line ++ ", position " ++ show column
+
+showErrorPosition :: Position -> String
+showErrorPosition pos = showPosition pos ++ ": "
 
 inbuildFunctions :: [TopDef Position]
 inbuildFunctions =
@@ -138,10 +170,10 @@ checkStmt (Decl _ argtype items) = mapM_ checkDecl items where
     case Map.lookup name inenv of
       Just t -> throwError (Redefinition name pos (getPositionFromType t))
       Nothing -> lift $ putInner (Map.insert name argtype inenv)
-  checkDecl (Init pos idn@(Ident name) expr) = do
+  checkDecl (Init pos ident@(Ident name) expr) = do
     exprtype <- checkExpr expr
     unless (exprtype == argtype) $ throwError (TypeMismatch name exprtype argtype)
-    checkDecl (NoInit pos idn)
+    checkDecl (NoInit pos ident)
 
 checkStmt (Ass pos ident expr) = do
   exprtype <- checkExpr expr
@@ -153,12 +185,12 @@ checkStmt (Decr pos ident) = checkVarMatch pos ident (Int pos)
 
 checkStmt (VRet pos) = do
   rtype <- ask
-  unless (rtype == Void pos) $ throwError (InvalidReturnType pos)
+  unless (rtype == Void pos) $ throwError (InvalidReturnType (fmap (const pos) rtype))
 
 checkStmt (Ret pos expr) = do
   rtype <- ask
   etype <- checkExpr expr
-  unless (rtype == etype) $ throwError (InvalidReturnType pos)
+  unless (rtype == etype) $ throwError (InvalidReturnType (fmap (const pos) rtype))
 
 checkStmt (Cond pos expr stmt) = do
   exprtype <- checkExpr expr

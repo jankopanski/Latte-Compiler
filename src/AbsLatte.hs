@@ -70,7 +70,7 @@ instance Functor Item where
         Init a ident expr -> Init (f a) ident (fmap f expr)
 data Type a
     = Int a | Str a | Bool a | Void a | Fun a (Type a) [Type a]
-  deriving (Ord, Show, Read)
+  deriving (Ord, Read)
   -- deriving (Eq, Ord, Show, Read)
 
 instance Eq (Type e) where
@@ -81,6 +81,17 @@ instance Eq (Type e) where
   Fun _ ret1 args1 == Fun _ ret2 args2 =
     ret1 == ret2 && args1 == args2
   _ == _ = False
+
+instance Show (Type e) where
+  show Int{} = "Int"
+  show Str{} = "Str"
+  show Bool{} = "Bool"
+  show Void{} = "Void"
+  show (Fun _ ret args) =
+    "Function " ++ show ret ++ "(" ++
+    (if null args then ""
+    else show (head args) ++ unlines (map (\t -> ", " ++ show t) (tail args)))
+    ++ ")"
 
 instance Functor Type where
     fmap f x = case x of
