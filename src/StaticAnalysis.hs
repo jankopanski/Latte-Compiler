@@ -15,8 +15,8 @@ type TypeScope = (TypeEnv, TypeEnv)
 type Position = Maybe (Int, Int)
 data Error
   = Redefinition Name Position Position
-  | TypeMismatch (Type Position)
-  | NoReturn Name Position
+  | TypeMismatchAnonymous (Type Position)
+  | TypeMismatch Name (Type Position) (Type Position)
   | InvalidReturnType Position
   | UnexpectedError Position
   | UndefinedVariable Name Position
@@ -24,6 +24,7 @@ data Error
   | VariableCall Name Position
   | InvalidNumberOfArguments Name Position
   | InvalidArgumentType Name Position
+  | InvalidDeclarationType Position
 type Checker a = ExceptT Error (State TypeScope) a
 type StatementChecker a = ReaderT (Type Position) (ExceptT Error (State TypeScope)) a
 type ExpressionChecker = StatementChecker (Type Position)
@@ -91,11 +92,17 @@ putInner inenv = getOuther >>= \outenv -> put (inenv, outenv)
 putOuther :: TypeEnv -> Checker ()
 putOuther outenv = getInner >>= \inenv -> put (inenv, outenv)
 
+getVarType :: Name -> Checker (Maybe (Type Position))
+getVarType name = do
+  (inenv, outenv) <- get
+  return $ case Map.lookup name inenv of
+    Nothing -> Map.lookup name outenv
+    e -> e
+
 checkTopDef :: TopDef Position -> Checker ()
 checkTopDef (FnDef fpos ftype (Ident name) args block) = do
   mapM_ addArg args
-  ret <- runReaderT (checkBlock block) ftype--(void ftype)
-  unless ret $ throwError (NoReturn name fpos) -- void nie musi mieć return
+  runReaderT (checkBlock block) ftype
 
 addArg :: Arg Position -> Checker ()
 addArg (Arg pos argtype (Ident name)) = do
@@ -104,15 +111,14 @@ addArg (Arg pos argtype (Ident name)) = do
     Just t  -> throwError (Redefinition name pos (getPositionFromType t))
     Nothing -> putInner $ Map.insert name argtype env
 
--- Bool oznacza czy wystąpił return czy nie
-checkBlock :: Block Position -> StatementChecker Bool
-checkBlock (Block _ stmts) = or <$> mapM checkStmt stmts
+checkBlock :: Block Position -> StatementChecker ()
+checkBlock (Block _ stmts) = mapM_ checkStmt stmts
 
 -- Statements --
 
-checkStmt :: Stmt Position -> StatementChecker Bool
+checkStmt :: Stmt Position -> StatementChecker ()
 
-checkStmt (Empty _) = return False
+checkStmt (Empty _) = return ()
 
 checkStmt (BStmt _ block) = do
   (inenv, outenv) <- get
@@ -122,15 +128,35 @@ checkStmt (BStmt _ block) = do
   put (inenv, outenv)
   return ret
 
+checkStmt (Decl pos (Void _) _) = throwError (InvalidDeclarationType pos)
+checkStmt (Decl pos Fun{} _) = throwError (InvalidDeclarationType pos)
+checkStmt (Decl _ argtype items) = mapM_ checkDecl items where
+  checkDecl :: Item Position -> StatementChecker ()
+  checkDecl (NoInit pos (Ident name)) = do
+    inenv <- lift getInner
+    case Map.lookup name inenv of
+      Just t -> throwError (Redefinition name pos (getPositionFromType t))
+      Nothing -> lift $ putInner (Map.insert name argtype inenv)
+  checkDecl (Init pos ind@(Ident name) expr) = do
+    exprtype <- checkExpr expr
+    unless (exprtype == argtype) $ throwError (TypeMismatch name exprtype argtype)
+    checkDecl (NoInit pos ind)
+
+checkStmt (Ass pos (Ident name) expr) = do
+  exprtype <- checkExpr expr
+  mvartype <- lift $ getVarType name
+  when (isNothing mvartype) $ throwError (UndefinedVariable name pos)
+  let vartype = fromJust mvartype
+  unless (exprtype == vartype) $ throwError (TypeMismatch name exprtype vartype)
+
 checkStmt (VRet pos) = do
   rtype <- ask
-  if rtype == Void pos then return True else throwError (InvalidReturnType pos)
---if rtype == Void () then return True else throwError (InvalidReturnType pos)
+  unless (rtype == Void pos) $ throwError (InvalidReturnType pos)
 
 checkStmt (Ret pos expr) = do
   rtype <- ask
   etype <- checkExpr expr
-  if rtype == etype then return True else throwError (InvalidReturnType pos)
+  unless (rtype == etype) $ throwError (InvalidReturnType pos)
 
 -- Expressions --
 
@@ -150,12 +176,9 @@ checkExpr (ELitFalse pos) = return $ Bool pos
 
 checkExpr (EApp pos (Ident name) exprs) = do
   exprtypes <- mapM checkExpr exprs
-  (inenv, outenv) <- get
-  let funtype = case Map.lookup name inenv of
-        Nothing -> Map.lookup name outenv
-        e -> e
-  when (isNothing funtype) $ throwError (UndefinedFunction name pos)
-  case fromJust funtype of
+  mfuntype <- lift $ getVarType name
+  when (isNothing mfuntype) $ throwError (UndefinedFunction name pos)
+  case fromJust mfuntype of
     Fun _ rettype argtypes -> do
       unless (length exprtypes == length argtypes) $
         throwError (InvalidNumberOfArguments name pos)
@@ -177,7 +200,7 @@ checkExpr (EAdd pos expr1 (Plus _) expr2) = do
   case exprtype1 of
     Int _ -> checkUnOp expr2 (Int pos)
     Str _ -> checkUnOp expr2 (Str pos)
-    Bool _ -> throwError $ TypeMismatch $ Bool pos
+    Bool _ -> throwError $ TypeMismatchAnonymous $ Bool pos
     _ -> throwError $ UnexpectedError pos
 
 checkExpr (EAdd pos expr1 (Minus _) expr2) = checkBinOp expr1 expr2 (Int pos)
@@ -188,12 +211,12 @@ checkExpr (ERel pos expr1 op expr2) = do
   exprtype1 <- checkExpr expr1
   exprtype2 <- checkExpr expr2
   let reltype = fmap (const pos) exprtype1
-  unless (exprtype1 == exprtype2) $ throwError (TypeMismatch reltype)
+  unless (exprtype1 == exprtype2) $ throwError (TypeMismatchAnonymous reltype)
   case op of
     EQU _ -> return reltype
     NE _ -> return reltype
     _ -> if reltype == Bool pos
-      then throwError (TypeMismatch reltype)
+      then throwError (TypeMismatchAnonymous reltype)
       else return reltype
 
 checkExpr (EAnd pos expr1 expr2) = checkBinOp expr1 expr2 (Bool pos)
@@ -205,7 +228,7 @@ checkUnOp expr optype= do
   exprtype <- checkExpr expr
   if exprtype == optype
     then return optype
-    else throwError $ TypeMismatch optype
+    else throwError $ TypeMismatchAnonymous optype
 
 checkBinOp :: Expr Position -> Expr Position -> Type Position -> ExpressionChecker
 checkBinOp expr1 expr2 optype= do
@@ -213,4 +236,4 @@ checkBinOp expr1 expr2 optype= do
   exprtype2 <- checkExpr expr2
   if exprtype1 == optype && exprtype2 == optype
     then return optype
-    else throwError $ TypeMismatch optype
+    else throwError $ TypeMismatchAnonymous optype
