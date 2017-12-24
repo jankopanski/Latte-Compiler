@@ -1,4 +1,4 @@
-module StaticAnalysis where
+module TypeControl where
 
 -- Imports --
 
@@ -57,7 +57,7 @@ instance Show Error where
     showErrorPosition (getPositionFromType t) ++ "Invalid type of return, expected " ++
     show t
   show (UnexpectedError pos) =
-    showErrorPosition pos ++ "Unexpected error"
+    showErrorPosition pos ++ "Unexpected error in type control module"
 
 type Checker a = ExceptT Error (State TypeScope) a
 type StatementChecker a = ReaderT (Type Position) (ExceptT Error (State TypeScope)) a
@@ -112,8 +112,8 @@ getVarType name = do
 
 -- Top checker functions --
 
-check :: Program Position -> IO ()
-check program =
+checkTypes :: Program Position -> IO ()
+checkTypes program =
   case evalState (runExceptT (checkProgram program)) (Map.empty, Map.empty) of
     Left err -> print err >> exitFailure
     Right _ -> return ()
