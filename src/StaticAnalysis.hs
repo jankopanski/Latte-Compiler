@@ -142,13 +142,6 @@ checkStmt (Decl _ argtype items) = mapM_ checkDecl items where
     unless (exprtype == argtype) $ throwError (TypeMismatch name exprtype argtype)
     checkDecl (NoInit pos idn)
 
--- checkStmt (Ass pos (Ident name) expr) = do
---   exprtype <- checkExpr expr
---   mvartype <- lift $ getVarType name
---   when (isNothing mvartype) $ throwError (UndefinedVariable name pos)
---   let vartype = fromJust mvartype
---   unless (exprtype == vartype) $ throwError (TypeMismatch name exprtype vartype)
-
 checkStmt (Ass pos ident expr) = do
   exprtype <- checkExpr expr
   checkVarMatch pos ident exprtype
@@ -165,6 +158,24 @@ checkStmt (Ret pos expr) = do
   rtype <- ask
   etype <- checkExpr expr
   unless (rtype == etype) $ throwError (InvalidReturnType pos)
+
+checkStmt (Cond pos expr stmt) = do
+  exprtype <- checkExpr expr
+  unless (exprtype == Bool pos) $ throwError (TypeMismatchAnonymous exprtype)
+  checkStmt stmt
+
+checkStmt (CondElse pos expr stmt1 stmt2) = do
+  exprtype <- checkExpr expr
+  unless (exprtype == Bool pos) $ throwError (TypeMismatchAnonymous exprtype)
+  checkStmt stmt1
+  checkStmt stmt2
+
+checkStmt (While pos expr stmt) = do
+  exprtype <- checkExpr expr
+  unless (exprtype == Bool pos) $ throwError (TypeMismatchAnonymous exprtype)
+  checkStmt stmt
+
+checkStmt (SExp _ expr) = void $ checkExpr expr
 
 checkVarMatch :: Position -> Ident -> Type Position -> StatementChecker ()
 checkVarMatch pos (Ident name) acttype = do
