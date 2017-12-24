@@ -1,7 +1,10 @@
 module StaticAnalysis where
 
+-- Imports --
+
 import qualified Data.Map as Map
 import Data.Maybe (isNothing, fromJust)
+import System.Exit (exitFailure)
 
 import Control.Monad.Except
 import Control.Monad.Reader
@@ -9,10 +12,13 @@ import Control.Monad.State
 
 import AbsLatte
 
+-- Data types --
+
 type Name = String
+type Position = Maybe (Int, Int)
 type TypeEnv = Map.Map Name (Type Position)
 type TypeScope = (TypeEnv, TypeEnv)
-type Position = Maybe (Int, Int)
+
 data Error
   = Redefinition Name Position Position
   | TypeMismatchAnonymous (Type Position)
@@ -25,18 +31,14 @@ data Error
   | InvalidNumberOfArguments Name Position
   | InvalidArgumentType Name Position
   | InvalidDeclarationType Position
+instance Show Error where
+  show _ = "ala"
+
 type Checker a = ExceptT Error (State TypeScope) a
 type StatementChecker a = ReaderT (Type Position) (ExceptT Error (State TypeScope)) a
 type ExpressionChecker = StatementChecker (Type Position)
--- type StatementChecker a = ReaderT (Type ()) (ExceptT Error (State TypeScope)) a
--- type ExpressionChecker = StatementChecker (Type ())
--- type StatementChecker = Checker (Maybe (Type Position))
 
--- instance Eq Type where
---   x == y = True
-
--- instance Show a => Show (Program a) where
---   show (Program a t) = "ala"
+-- Helper functions --
 
 inbuildFunctions :: [TopDef Position]
 inbuildFunctions =
@@ -49,29 +51,6 @@ inbuildFunctions =
   FnDef Nothing (Int Nothing) (Ident "readInt") [] (Block Nothing []),
   FnDef Nothing (Str Nothing) (Ident "readString") [] (Block Nothing [])
   ]
-
-analise :: Program Position -> IO ()
-analise p = print p
--- analise p = print ((Str (Just (0,0))) == (Str (Just (1,1))))
-
-checkProgram :: Program Position -> Checker ()
-checkProgram (Program pos topdefs) = do
-  mapM_ addFnDecl inbuildFunctions
-  mapM_ addFnDecl topdefs
-  mapM_ checkTopDef topdefs
-
--- addFnDecl :: TypeEnv -> TopDef Position -> TypeEnv
--- addFnDecl decls (FnDef fnpos rettype (Ident name) args _) =
---   let argtypes = map (\(Arg _ t _) -> t) args in
---   Map.insert name (Fun fnpos rettype argtypes) decls
-
-addFnDecl :: TopDef Position -> Checker ()
-addFnDecl (FnDef fnpos rettype (Ident name) args _) = do
-  decls <- getOuther
-  case Map.lookup name decls of
-    Just t -> throwError (Redefinition name fnpos (getPositionFromType t))
-    Nothing -> let argtypes = map (\(Arg _ t _) -> t) args in
-      putOuther $ Map.insert name (Fun fnpos rettype argtypes) decls
 
 getPositionFromType :: Type Position -> Position
 getPositionFromType (Int pos)     = pos
@@ -99,8 +78,30 @@ getVarType name = do
     Nothing -> Map.lookup name outenv
     e -> e
 
+-- Top checker functions --
+
+check :: Program Position -> IO ()
+check program =
+  case evalState (runExceptT (checkProgram program)) (Map.empty, Map.empty) of
+    Left err -> print err >> exitFailure
+    Right _ -> return ()
+
+checkProgram :: Program Position -> Checker ()
+checkProgram (Program _ topdefs) = do
+  mapM_ addFnDecl inbuildFunctions
+  mapM_ addFnDecl topdefs
+  mapM_ checkTopDef topdefs
+
+addFnDecl :: TopDef Position -> Checker ()
+addFnDecl (FnDef fnpos rettype (Ident name) args _) = do
+  decls <- getOuther
+  case Map.lookup name decls of
+    Just t -> throwError (Redefinition name fnpos (getPositionFromType t))
+    Nothing -> let argtypes = map (\(Arg _ t _) -> t) args in
+      putOuther $ Map.insert name (Fun fnpos rettype argtypes) decls
+
 checkTopDef :: TopDef Position -> Checker ()
-checkTopDef (FnDef fpos ftype (Ident name) args block) = do
+checkTopDef (FnDef _ ftype _ args block) = do
   mapM_ addArg args
   runReaderT (checkBlock block) ftype
 
