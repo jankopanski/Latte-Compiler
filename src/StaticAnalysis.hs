@@ -137,17 +137,25 @@ checkStmt (Decl _ argtype items) = mapM_ checkDecl items where
     case Map.lookup name inenv of
       Just t -> throwError (Redefinition name pos (getPositionFromType t))
       Nothing -> lift $ putInner (Map.insert name argtype inenv)
-  checkDecl (Init pos ind@(Ident name) expr) = do
+  checkDecl (Init pos idn@(Ident name) expr) = do
     exprtype <- checkExpr expr
     unless (exprtype == argtype) $ throwError (TypeMismatch name exprtype argtype)
-    checkDecl (NoInit pos ind)
+    checkDecl (NoInit pos idn)
 
-checkStmt (Ass pos (Ident name) expr) = do
+-- checkStmt (Ass pos (Ident name) expr) = do
+--   exprtype <- checkExpr expr
+--   mvartype <- lift $ getVarType name
+--   when (isNothing mvartype) $ throwError (UndefinedVariable name pos)
+--   let vartype = fromJust mvartype
+--   unless (exprtype == vartype) $ throwError (TypeMismatch name exprtype vartype)
+
+checkStmt (Ass pos ident expr) = do
   exprtype <- checkExpr expr
-  mvartype <- lift $ getVarType name
-  when (isNothing mvartype) $ throwError (UndefinedVariable name pos)
-  let vartype = fromJust mvartype
-  unless (exprtype == vartype) $ throwError (TypeMismatch name exprtype vartype)
+  checkVarMatch pos ident exprtype
+
+checkStmt (Incr pos ident) = checkVarMatch pos ident (Int pos)
+
+checkStmt (Decr pos ident) = checkVarMatch pos ident (Int pos)
 
 checkStmt (VRet pos) = do
   rtype <- ask
@@ -157,6 +165,13 @@ checkStmt (Ret pos expr) = do
   rtype <- ask
   etype <- checkExpr expr
   unless (rtype == etype) $ throwError (InvalidReturnType pos)
+
+checkVarMatch :: Position -> Ident -> Type Position -> StatementChecker ()
+checkVarMatch pos (Ident name) acttype = do
+  mvartype <- lift $ getVarType name
+  when (isNothing mvartype) $ throwError (UndefinedVariable name pos)
+  let vartype = fromJust mvartype
+  unless (vartype == acttype) $ throwError (TypeMismatch name acttype vartype)
 
 -- Expressions --
 
