@@ -10,12 +10,12 @@ import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
 
+import Globals
 import AbsLatte
 
--- Data types --
+-- Data structures --
 
 type Name = String
-type Position = Maybe (Int, Int)
 type TypeEnv = Map.Map Name (Type Position)
 type TypeScope = (TypeEnv, TypeEnv)
 
@@ -64,13 +64,6 @@ type StatementChecker a = ReaderT (Type Position) (ExceptT Error (State TypeScop
 type ExpressionChecker = StatementChecker (Type Position)
 
 -- Helper functions --
-
-showPosition :: Position -> String
-showPosition Nothing = ""
-showPosition (Just (line, column)) = "line " ++ show line ++ ", position " ++ show column
-
-showErrorPosition :: Position -> String
-showErrorPosition pos = showPosition pos ++ ": "
 
 inbuildFunctions :: [TopDef Position]
 inbuildFunctions =

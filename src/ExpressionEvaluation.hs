@@ -2,11 +2,8 @@ module ExpressionEvaluation where
 
 -- Imports --
 
+import Globals (Position)
 import AbsLatte
-
--- Data types --
-
-type Position = Maybe (Int, Int)
 
 -- Top functions --
 
