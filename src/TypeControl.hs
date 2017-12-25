@@ -110,7 +110,7 @@ getVarType name = do
     Nothing -> Map.lookup name outenv
     e -> e
 
--- Top checker functions --
+-- Top functions --
 
 checkTypes :: Program Position -> IO ()
 checkTypes program =
