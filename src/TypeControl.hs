@@ -262,14 +262,15 @@ checkExpr (EMul pos expr1 _ expr2) = checkBinOp expr1 expr2 (Int pos)
 checkExpr (ERel pos expr1 op expr2) = do
   exprtype1 <- checkExpr expr1
   exprtype2 <- checkExpr expr2
-  let reltype = fmap (const pos) exprtype1
-  unless (exprtype1 == exprtype2) $ throwError (TypeMismatchAnonymous reltype)
+  let reltype = Bool pos
+  unless (exprtype1 == exprtype2) $ throwError
+    (TypeMismatchAnonymous $ fmap (const $ getPositionFromType exprtype2) exprtype1)
   case op of
     EQU _ -> return reltype
     NE _ -> return reltype
-    _ -> if reltype == Bool pos
-      then throwError (TypeMismatchAnonymous reltype)
-      else return reltype
+    _ -> if reltype == Int pos
+      then return reltype
+      else throwError (TypeMismatchAnonymous $ Int pos)
 
 checkExpr (EAnd pos expr1 expr2) = checkBinOp expr1 expr2 (Bool pos)
 

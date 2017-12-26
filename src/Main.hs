@@ -19,8 +19,8 @@ putStrV v s = when (v > 1) $ putStrLn s
 
 showTree :: (Show a, Print a) => Int -> a -> IO ()
 showTree v tree = do
-  putStrV v $ "\n[Abstract Syntax]\n\n" ++ show tree
-  putStrV v $ "\n[Linearized tree]\n\n" ++ printTree tree
+  putStrV v $ "[Abstract Syntax]\n" ++ show tree
+  putStrV v $ "[Linearized tree]\n" ++ printTree tree
 
 usage :: IO ()
 usage = putStrLn $ unlines
@@ -55,7 +55,7 @@ run v f =
       putStrV v "Parse completed"
       showTree v tree
       checkTypes tree
-      putStrV v "Type check completed"
+      putStrV v "Type check completed\n"
       let optTree = evalProgram tree
       putStrV v "Static evaluation completed"
       showTree v optTree

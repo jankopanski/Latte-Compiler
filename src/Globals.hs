@@ -11,4 +11,4 @@ showPosition Nothing = ""
 showPosition (Just (line, column)) = "line " ++ show line ++ ", position " ++ show column
 
 showErrorPosition :: Position -> String
-showErrorPosition pos = showPosition pos ++ ": "
+showErrorPosition pos = "ERROR " ++ showPosition pos ++ ": "

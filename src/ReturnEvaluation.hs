@@ -14,7 +14,8 @@ returnEvalProgram (Program pos topdefs) =
   case mapM returnEvalTopDef topdefs of
     Right topdefs' -> return $ Program pos topdefs'
     Left (Ident name, errpos) -> do
-      putStrLn $ showErrorPosition errpos ++ "No return statement in function " ++ name
+      putStrLn $ showErrorPosition errpos ++
+        "No return statement in function '" ++ name ++ "'"
       exitFailure
 
 returnEvalTopDef :: TopDef Position -> Either (Ident, Position) (TopDef Position)
