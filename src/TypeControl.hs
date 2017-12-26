@@ -268,7 +268,7 @@ checkExpr (ERel pos expr1 op expr2) = do
   case op of
     EQU _ -> return reltype
     NE _ -> return reltype
-    _ -> if reltype == Int pos
+    _ -> if exprtype1 == Int pos
       then return reltype
       else throwError (TypeMismatchAnonymous $ Int pos)
 
