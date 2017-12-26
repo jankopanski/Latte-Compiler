@@ -46,7 +46,6 @@ run v f =
   let lexemes = myLexer s in
   case pProgram lexemes of
     Bad err -> do
-      putStrLn "Syntax error\n"
       putStrV v "Tokens:"
       putStrV v $ show lexemes
       putStrLn err

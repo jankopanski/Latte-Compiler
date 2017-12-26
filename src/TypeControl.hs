@@ -37,20 +37,22 @@ instance Show Error where
       "'\n\tPreviously defined at " ++ showPosition old
   show (TypeMismatch name actual expected) =
     showErrorPosition (getPositionFromType actual) ++ "Type mismatch, used type " ++
-      show actual ++ ", expected " ++ show expected ++ ", " ++ name  ++
-      " was declared at " ++ showPosition (getPositionFromType expected)
+      show actual ++ ", expected " ++ show expected ++ ", '" ++ name  ++
+      "' was declared at " ++ showPosition (getPositionFromType expected)
   show (TypeMismatchAnonymous t) =
     showErrorPosition (getPositionFromType t) ++ "Expected type " ++ show t
   show (UndefinedFunction name pos) =
-    showErrorPosition pos ++ "Undefined function " ++ name
+    showErrorPosition pos ++ "Undefined function '" ++ name ++ "'"
   show (UndefinedVariable name pos) =
-    showErrorPosition pos ++ "Undefined variable " ++ name
+    showErrorPosition pos ++ "Undefined variable '" ++ name ++ "'"
   show (VariableCall name pos) =
-    showErrorPosition pos ++ name ++ " is not callable"
+    showErrorPosition pos ++ "'" ++ name ++ "' is not callable"
   show (InvalidNumberOfArguments name pos) =
-    showErrorPosition pos ++ "Invalid number of arguments in call to function " ++ name
+    showErrorPosition pos ++ "Invalid number of arguments in call to function '"
+    ++ name ++ "'"
   show (InvalidArgumentType name pos) =
-    showErrorPosition pos ++ "Invalid type of argument in call to function " ++ name
+    showErrorPosition pos ++ "Invalid type of argument in call to function '"
+    ++ name ++ "'"
   show (InvalidDeclarationType pos) =
     showErrorPosition pos ++ "Invalid declaration type"
   show (InvalidReturnType t) =
@@ -127,8 +129,10 @@ addFnDecl (FnDef fnpos rettype (Ident name) args _) = do
 
 checkTopDef :: TopDef Position -> Checker ()
 checkTopDef (FnDef _ ftype _ args block) = do
+  envs <- get
   mapM_ addArg args
   runReaderT (checkBlock block) ftype
+  put envs
 
 addArg :: Arg Position -> Checker ()
 addArg (Arg pos argtype (Ident name)) = do

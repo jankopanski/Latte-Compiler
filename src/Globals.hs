@@ -8,7 +8,7 @@ type Position = Maybe (Int, Int)
 
 showPosition :: Position -> String
 showPosition Nothing = ""
-showPosition (Just (line, column)) = "line " ++ show line ++ ", position " ++ show column
+showPosition (Just (line, column)) = "line " ++ show line ++ ", column " ++ show column
 
 showErrorPosition :: Position -> String
-showErrorPosition pos = "ERROR " ++ showPosition pos ++ ": "
+showErrorPosition pos = "error at " ++ showPosition pos ++ ": "

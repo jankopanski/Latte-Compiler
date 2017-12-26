@@ -16,18 +16,20 @@ evalTopDef (FnDef pos ret ident args block) =
 
 evalBlock :: Block Position -> Block Position
 evalBlock (Block pos stmts) =
-  Block pos (filter (isStmtEmpty . evalStmt) stmts) where
-  isStmtEmpty (Empty _) = False
-  isStmtEmpty _ = True
+  let stmts' = map evalStmt stmts in
+  Block pos (filter isStmtEmpty stmts') where
+    isStmtEmpty (Empty _) = False
+    isStmtEmpty _ = True
 
 -- Statements --
 
 evalStmt :: Stmt Position -> Stmt Position
 
-evalStmt s@(BStmt pos block) =
-  case evalBlock block of
+evalStmt (BStmt pos block) =
+  let block' = evalBlock block in
+  case block' of
     Block _ [] -> Empty pos
-    _ -> s
+    _ -> BStmt pos block'
 
 evalStmt (Decl pos argtype items) = Decl pos argtype (map evalItem items) where
   evalItem (Init ipos ident expr) = Init ipos ident (evalExpr expr)
