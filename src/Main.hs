@@ -2,7 +2,7 @@ module Main where
 
 import System.Environment (getArgs)
 import System.Exit (exitFailure, exitSuccess)
-import Control.Monad (when)
+import Control.Monad (when, void)
 
 import ParLatte
 import PrintLatte
@@ -11,6 +11,7 @@ import ErrM
 import TypeControl (checkTypes)
 import ExpressionEvaluation (evalProgram)
 import ReturnEvaluation (returnEvalProgram)
+import IntermediateCodeGeneration
 
 type Verbosity = Int
 
@@ -61,4 +62,5 @@ run v f =
       retOptTree <- returnEvalProgram optTree
       putStrV v "Return optimisation completed"
       showTree v retOptTree
+      let newTree = void retOptTree
       exitSuccess

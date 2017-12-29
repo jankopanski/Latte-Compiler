@@ -1,4 +1,4 @@
-module TypeControl where
+module TypeControl where -- abstract syntax tree checker
 
 -- Imports --
 
