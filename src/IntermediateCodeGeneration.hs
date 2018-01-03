@@ -262,7 +262,8 @@ genBinOp oper expr1 expr2 = do
       else if r2 == firstReg
         then let r3 = nextReg r2 in (Reg r3, i2 ++ [IMov o1 r3, IBinOp oper r3 o2])
       else (o2, i2 ++ [IMov o1 firstReg, IBinOp oper firstReg o2, IXchg firstReg r2])
-    (Reg r1, Mem _) -> return (Reg r1, i1 ++ [IBinOp oper r1 o2])
+    (Reg r1, Mem _) ->
+      return (Reg r1, i1 ++ [IBinOp oper r1 o2])
     (Mem m1, Reg r2) -> return $
       if isCommutative oper
         then (o2, i2 ++ [IBinOp oper r2 o1])
