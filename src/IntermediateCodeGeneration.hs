@@ -246,39 +246,37 @@ genBinOp oper expr1 expr2 = do
   (o2, i2) <- genExpr expr2
   case (o1, o2) of
     (Imm _, Imm _) -> generr
-    (Mem m1, Imm c2) ->
-      return (Reg firstReg, [ILoad m1 firstReg, IBinOp oper firstReg (Imm c2)])
-    (Imm c1, Mem m2) ->
+    (Mem m1, Imm _) ->
+      return (Reg firstReg, [ILoad m1 firstReg, IBinOp oper firstReg o2])
+    (Imm _, Mem m2) ->
       return (Reg firstReg, if isCommutative oper
-        then [ILoad m2 firstReg, IBinOp oper firstReg (Imm c1)]
-        else [IMov (Imm c1) firstReg, IBinOp oper firstReg (Mem m2)])
-    (Mem m1, Mem m2) ->
-      return (Reg firstReg, [ILoad m1 firstReg, IBinOp oper firstReg (Mem m2)])
-    (Reg r1, Imm c2) ->
-      return (Reg r1, i1 ++ [IBinOp oper r1 (Imm c2)])
-    (Imm c1, Reg r2) -> return $
+        then [ILoad m2 firstReg, IBinOp oper firstReg o1]
+        else [IMov o1 firstReg, IBinOp oper firstReg o2])
+    (Mem m1, Mem _) ->
+      return (Reg firstReg, [ILoad m1 firstReg, IBinOp oper firstReg o2])
+    (Reg r1, Imm _) ->
+      return (o1, i1 ++ [IBinOp oper r1 o2])
+    (Imm _, Reg r2) -> return $
       if isCommutative oper
-        then (Reg r2, i2 ++ [IBinOp oper r2 (Imm c1)])
+        then (o2, i2 ++ [IBinOp oper r2 o1])
       else if r2 == firstReg
-        then let r3 = nextReg r2 in
-          (Reg r3, i2 ++ [IMov (Imm c1) r3, IBinOp oper r3 (Reg r2)])
-      else (Reg r2, i2 ++ [IMov (Imm c1) firstReg,
-          IBinOp oper firstReg (Reg r2), IXchg firstReg r2])
-    (Reg r1, Mem m2) -> return (Reg r1, i1 ++ [IBinOp oper r1 (Mem m2)])
+        then let r3 = nextReg r2 in (Reg r3, i2 ++ [IMov o1 r3, IBinOp oper r3 o2])
+      else (o2, i2 ++ [IMov o1 firstReg, IBinOp oper firstReg o2, IXchg firstReg r2])
+    (Reg r1, Mem _) -> return (Reg r1, i1 ++ [IBinOp oper r1 o2])
     (Mem m1, Reg r2) -> return $
       if isCommutative oper
-        then (Reg r2, i2 ++ [IBinOp oper r2 (Mem m1)])
+        then (o2, i2 ++ [IBinOp oper r2 o1])
       else if r2 == firstReg
-        then let r3 = nextReg r2 in (Reg r3, i2 ++ [ILoad m1 r3, IBinOp oper r3 (Reg r2)])
-      else (Reg r2, i2 ++ [ILoad m1 firstReg, IBinOp oper firstReg (Reg r2), IXchg firstReg r2])
+        then let r3 = nextReg r2 in (Reg r3, i2 ++ [ILoad m1 r3, IBinOp oper r3 o2])
+      else (o2, i2 ++ [ILoad m1 firstReg, IBinOp oper firstReg o2, IXchg firstReg r2])
     (Reg r1, Reg r2) -> case compare r1 r2 of
-      GT -> return (Reg r1, i1 ++ i2 ++ [IBinOp oper r1 (Reg r2)])
-      LT -> return (Reg r2, i2 ++ i1 ++ [IXchg r1 r2, IBinOp oper r1 (Reg r2)])
+      GT -> return (Reg r1, i1 ++ i2 ++ [IBinOp oper r1 o2])
+      LT -> return (Reg r2, i2 ++ i1 ++ [IXchg r1 r2, IBinOp oper r1 o2])
       EQ -> return $ if r1 == lastReg
         then let r3 = firstReg in
-          (Reg r1, i2 ++ [IPush r2] ++ i1 ++ [IPop r3, IBinOp oper r1 (Reg r3)])
+          (o1, i2 ++ [IPush r2] ++ i1 ++ [IPop r3, IBinOp oper r1 (Reg r3)])
         else let r3 = nextReg r1 in
-          (Reg r3, i1 ++ [IMov (Reg r1) r3] ++ i2 ++ [IBinOp oper r3 (Reg r2)])
+          (Reg r3, i1 ++ [IMov o1 r3] ++ i2 ++ [IBinOp oper r3 o2])
 
 genUnOp :: UnaryOperator -> Expr () -> ExpressionGenerator
 genUnOp oper expr = do
