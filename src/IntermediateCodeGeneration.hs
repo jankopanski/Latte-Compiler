@@ -7,9 +7,12 @@ import Data.Map (Map, empty, (!), insert)
 
 import AbsLatte
 
-newtype Label = Label Integer
 
-type Size  = Integer
+type Size = Integer
+
+type Pointer = Integer
+
+newtype Label = Label Integer
 
 data Register = EBP | ESP | EAX | ECX | EDX | EBX | EDI | ESI
   deriving (Eq, Ord, Enum, Bounded)
@@ -25,7 +28,7 @@ data Operand
   | Mem Memory
   | Imm Integer
 
-data BinaryOperator = ADD | SUB | MUL | DIV | AND | OR deriving (Eq)
+data BinaryOperator = ADD | SUB | MUL | DIV | MOD | AND | OR deriving (Eq)
 -- data RelationOperator = EQ | NE | GT | GE | LT | LE deriving (Eq)
 data UnaryOperator = NEG | NOT | INC | DEC deriving (Eq)
 
@@ -50,16 +53,30 @@ data Store = Store {
   labelCounter :: Integer,
   localSize :: Size,
   variableEnv :: Map Ident Memory,
+  stringCounter :: Integer,
+  strings :: [String],
   returnLabel :: Label
 }
 
-type RegisterUsage = [(Register, Bool)]
+data ImmediateCode = ImmediateCode {
+  functions :: [(Ident, [Instruction])]
+}
 
 type TopGeneratorT = StateT Store IO
 type TopGenerator a = TopGeneratorT a
 type Generator a = WriterT [Instruction] TopGeneratorT a
 type StatementGenerator = Generator ()
 type ExpressionGenerator = Generator (Operand, [Instruction])
+
+emptyStore :: Store
+emptyStore = Store {
+  labelCounter = 0,
+  localSize = 0,
+  variableEnv = empty,
+  stringCounter = 0,
+  strings = [],
+  returnLabel = Label 0
+}
 
 wordLen :: Size
 wordLen = 4
@@ -82,10 +99,10 @@ isCommutative MUL = True
 isCommutative _ = False
 
 sizeOf :: Type () -> Integer
-sizeOf (Int ()) = wordLen
+sizeOf _ = wordLen
 
 defaultValue :: Type () -> Integer
-defaultValue (Int ()) = 0
+defaultValue _ = 0
 
 getArgEnv :: [Arg ()] -> Map Ident Memory
 getArgEnv args = fst $ foldr addArg (empty, 2 * wordLen) args where
@@ -119,12 +136,21 @@ newLabel = state (\s -> let n = labelCounter s in (Label n, s {labelCounter = n 
 generr :: Generator a
 generr = error "Unexpected error"
 
-allocate :: Type () -> Generator Memory
-allocate vartype = state (\s -> let size = localSize s in
+newLoc :: Type () -> Generator Memory
+newLoc vartype = state (\s -> let size = localSize s in
   (MemoryLocal (-(size + wordLen)), s {localSize = size + sizeOf vartype}))
 
 getLoc :: Ident -> Generator Memory
 getLoc ident = get >>= \s -> return $ variableEnv s ! ident
+
+
+runIntermediateCodeGeneration :: Program () -> IO ImmediateCode
+runIntermediateCodeGeneration program = evalStateT (genProgram program) emptyStore
+
+genProgram :: Program () -> TopGenerator ImmediateCode
+genProgram (Program () topdefs) = do
+  fs <- mapM genTopDef topdefs
+  return (ImmediateCode fs)
 
 genTopDef :: TopDef () -> TopGenerator (Ident, [Instruction])
 genTopDef (FnDef () _ ident args block) = do
@@ -151,13 +177,13 @@ genStmt (Empty ()) = return ()
 genStmt (Decl () vartype items) = mapM_ genDecl items where
   genDecl :: Item () -> StatementGenerator
   genDecl (NoInit () ident) = do
-    m <- allocate vartype
+    m <- newLoc vartype
     s <- get
     put (s {variableEnv = insert ident m (variableEnv s)})
     tell [IStore (Imm (defaultValue vartype)) m]
   genDecl (Init () ident expr) = do
     (o, i) <- genExpr expr
-    m <- allocate vartype
+    m <- newLoc vartype
     s <- get
     put (s {variableEnv = insert ident m (variableEnv s)})
     tell $ i ++ [IStore o m]
@@ -184,13 +210,35 @@ genStmt (SExp () expr) = genExpr expr >>= \(_, i) -> tell i
 
 genExpr :: Expr () -> ExpressionGenerator
 
+genExpr (EVar () ident) = getLoc ident >>= \m -> return (Mem m, [])
+
 genExpr (ELitInt () n) = return (Imm n, [])
 
 genExpr (ELitTrue ()) = return (Imm 1, [])
 
 genExpr (ELitFalse ()) = return (Imm 0, [])
 
+-- genExpr (EString () s) = do
+--   l <- addGlobalString s
+--
+
+genExpr (Neg () expr) = genUnOp NEG expr
+
+genExpr (Not () expr) = genUnOp NOT expr
+
 genExpr (EAdd () expr1 (Plus ()) expr2) = genBinOp ADD expr1 expr2
+
+genExpr (EAdd () expr1 (Minus ()) expr2) = genBinOp SUB expr1 expr2
+
+genExpr (EMul () expr1 (Times ()) expr2) = genBinOp MUL expr1 expr2
+
+genExpr (EMul () expr1 (Div ()) expr2) = genBinOp DIV expr1 expr2
+
+genExpr (EMul () expr1 (Mod ()) expr2) = genBinOp MOD expr1 expr2
+
+genExpr (EAnd () expr1 expr2) = genBinOp AND expr1 expr2
+
+genExpr (EOr () expr1 expr2) = genBinOp OR expr1 expr2
 
 genBinOp :: BinaryOperator -> Expr () -> Expr () -> ExpressionGenerator
 genBinOp oper expr1 expr2 = do
@@ -231,3 +279,11 @@ genBinOp oper expr1 expr2 = do
           (Reg r1, i2 ++ [IPush r2] ++ i1 ++ [IPop r3, IBinOp oper r1 (Reg r3)])
         else let r3 = nextReg r1 in
           (Reg r3, i1 ++ [IMov (Reg r1) r3] ++ i2 ++ [IBinOp oper r3 (Reg r2)])
+
+genUnOp :: UnaryOperator -> Expr () -> ExpressionGenerator
+genUnOp oper expr = do
+  (o, i) <- genExpr expr
+  case o of
+    Imm _ -> generr
+    Mem m -> return (Reg firstReg, i ++ [ILoad m firstReg, IUnOp oper (Reg firstReg)])
+    Reg _ -> return (o, i ++ [IUnOp oper o])

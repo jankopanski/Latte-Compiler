@@ -1,4 +1,4 @@
-module ExpressionEvaluation where
+module ExpressionEvaluation where -- TODO rename static evaluation
 
 -- Imports --
 
