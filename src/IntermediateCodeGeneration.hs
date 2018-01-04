@@ -43,7 +43,7 @@ data Instruction
   -- | IRelOp RelationOperator Operand Operand
   | IUnOp UnaryOperator Operand
   | IParam Operand
-  | ICall Label Integer
+  | ICall Ident Integer
   | IJump Label
   | IJumpCond Operand Label
   | IRet
@@ -218,6 +218,10 @@ genExpr (ELitTrue ()) = return (Imm 1, [])
 
 genExpr (ELitFalse ()) = return (Imm 0, [])
 
+genExpr (EApp () ident exprs) = do
+  params <- mapM genExpr exprs
+  let ins = concatMap (\(o, i) -> i ++ [IParam o]) params
+  return (Reg EAX, ins ++ [ICall ident (fromIntegral $ length params)])
 -- genExpr (EString () s) = do
 --   l <- addGlobalString s
 --
