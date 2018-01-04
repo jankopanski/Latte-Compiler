@@ -2,8 +2,10 @@ module IntermediateCodeGeneration where
 
 import Control.Monad.State
 import Control.Monad.Writer
+import Control.Monad.Reader
 
 import Data.Map (Map, empty, (!), insert)
+-- import Data.Maybe (isJust, fromJust)
 
 import AbsLatte
 
@@ -27,9 +29,10 @@ data Operand
   = Reg Register
   | Mem Memory
   | Imm Integer
+  | Nop
 
 data BinaryOperator = ADD | SUB | MUL | DIV | MOD | AND | OR deriving (Eq)
--- data RelationOperator = EQ | NE | GT | GE | LT | LE deriving (Eq)
+data RelationOperator = REQ | RNE | RGT | RGE | RLT | RLE deriving (Eq)
 data UnaryOperator = NEG | NOT | INC | DEC deriving (Eq)
 
 data Instruction
@@ -45,9 +48,13 @@ data Instruction
   | IParam Operand
   | ICall Ident Integer
   | IJump Label
-  | IJumpCond Operand Label
+  | IJumpCond RelationOperator Register Operand Label
   | IRet
-  | ILable Label
+  | ILabel Label
+
+data Environment = Environment {
+  labels :: Maybe (Label, Label)
+}
 
 data Store = Store {
   labelCounter :: Integer,
@@ -64,9 +71,14 @@ data ImmediateCode = ImmediateCode {
 
 type TopGeneratorT = StateT Store IO
 type TopGenerator a = TopGeneratorT a
-type Generator a = WriterT [Instruction] TopGeneratorT a
+type Generator a =  ReaderT Environment (WriterT [Instruction] TopGeneratorT) a
 type StatementGenerator = Generator ()
 type ExpressionGenerator = Generator (Operand, [Instruction])
+
+emptyEnvironment :: Environment
+emptyEnvironment = Environment {
+  labels = Nothing
+}
 
 emptyStore :: Store
 emptyStore = Store {
@@ -123,7 +135,7 @@ prolog size reg = [IPush EBP, IMov (Reg ESP) EBP, IBinOp SUB ESP (Imm size)] ++
     _ -> []
 
 epilog :: Label -> Register -> [Instruction]
-epilog lab reg = pops ++ [ILable lab, IMov (Reg EBP) ESP, IPop EBP, IRet] where
+epilog lab reg = pops ++ [ILabel lab, IMov (Reg EBP) ESP, IPop EBP, IRet] where
   pops = case reg of
     EBX -> [IPop EBX]
     EDI -> [IPop EDI, IPop EBX]
@@ -158,7 +170,7 @@ genTopDef (FnDef () _ ident args block) = do
   l <- newLabel
   s <- get
   put (s {localSize = 0, variableEnv = env, returnLabel = l})
-  ins <- execWriterT (genBlock block)
+  ins <- execWriterT (runReaderT (genBlock block) emptyEnvironment)
   let callieSave = usedCallieSave ins
       fullIns = prolog (localSize s) callieSave ++ ins ++ epilog l callieSave
   return (ident, fullIns)
@@ -173,6 +185,8 @@ genBlock (Block () stmts) = do
 genStmt :: Stmt () -> StatementGenerator
 
 genStmt (Empty ()) = return ()
+
+genStmt (BStmt () block) = genBlock block
 
 genStmt (Decl () vartype items) = mapM_ genDecl items where
   genDecl :: Item () -> StatementGenerator
@@ -205,6 +219,34 @@ genStmt (Ret () expr) = do
   tell $ i ++ [IMov o EAX, IJump (returnLabel s)]
 
 genStmt (VRet ()) = get >>= \s -> tell [IJump (returnLabel s)]
+
+genStmt (Cond () expr stmt) = do
+  lthen <- lift $ lift newLabel
+  lafter <- lift $ lift newLabel
+  (_, i) <- local (\env -> env {labels = Just (lafter, lthen)}) (genExpr expr)
+  tell $ i ++ [ILabel lthen]
+  genStmt stmt
+  tell [ILabel lafter]
+
+genStmt (CondElse () expr stmt1 stmt2) = do
+  lthen <- lift $ lift newLabel
+  lelse <- lift $ lift newLabel
+  lafter <- lift $ lift newLabel
+  (_, i) <- local (\env -> env {labels = Just (lelse, lthen)}) (genExpr expr)
+  tell $ i ++ [ILabel lthen]
+  genStmt stmt1
+  tell [ILabel lelse]
+  genStmt stmt2
+  tell [ILabel lafter]
+
+genStmt (While () expr stmt) = do
+  lcond <- lift $ lift newLabel
+  lwhile <- lift $ lift newLabel
+  lafter <- lift $ lift newLabel
+  (_, i) <- local (\env -> env {labels = Just (lafter, lwhile)}) (genExpr expr)
+  tell $ [ILabel lcond] ++ i ++ [ILabel lwhile]
+  genStmt stmt
+  tell [ILabel lafter]
 
 genStmt (SExp () expr) = genExpr expr >>= \(_, i) -> tell i
 
@@ -240,16 +282,27 @@ genExpr (EMul () expr1 (Div ()) expr2) = genBinOp DIV expr1 expr2
 
 genExpr (EMul () expr1 (Mod ()) expr2) = genBinOp MOD expr1 expr2
 
-genExpr (EAnd () expr1 expr2) = genBinOp AND expr1 expr2
+genExpr (ERel () expr1 (LTH ()) expr2) = genRelOp RLT expr1 expr2
 
-genExpr (EOr () expr1 expr2) = genBinOp OR expr1 expr2
+genExpr (ERel () expr1 (LE ()) expr2) = genRelOp RLE expr1 expr2
+
+genExpr (ERel () expr1 (GTH ()) expr2) = genRelOp RGT expr1 expr2
+
+genExpr (ERel () expr1 (GE ()) expr2) = genRelOp RGE expr1 expr2
+
+genExpr (ERel () expr1 (EQU ()) expr2) = genRelOp REQ expr1 expr2
+
+genExpr (ERel () expr1 (NE ()) expr2) = genRelOp RNE expr1 expr2
+
+genExpr (EAnd () expr1 expr2) = genBoolOp AND expr1 expr2
+
+genExpr (EOr () expr1 expr2) = genBoolOp OR expr1 expr2
 
 genBinOp :: BinaryOperator -> Expr () -> Expr () -> ExpressionGenerator
 genBinOp oper expr1 expr2 = do
   (o1, i1) <- genExpr expr1
   (o2, i2) <- genExpr expr2
   case (o1, o2) of
-    (Imm _, Imm _) -> generr
     (Mem m1, Imm _) ->
       return (Reg firstReg, [ILoad m1 firstReg, IBinOp oper firstReg o2])
     (Imm _, Mem m2) ->
@@ -282,11 +335,69 @@ genBinOp oper expr1 expr2 = do
           (o1, i2 ++ [IPush r2] ++ i1 ++ [IPop r3, IBinOp oper r1 (Reg r3)])
         else let r3 = nextReg r1 in
           (Reg r3, i1 ++ [IMov o1 r3] ++ i2 ++ [IBinOp oper r3 o2])
+    _ -> generr
 
 genUnOp :: UnaryOperator -> Expr () -> ExpressionGenerator
 genUnOp oper expr = do
   (o, i) <- genExpr expr
   case o of
-    Imm _ -> generr
     Mem m -> return (Reg firstReg, i ++ [ILoad m firstReg, IUnOp oper (Reg firstReg)])
     Reg _ -> return (o, i ++ [IUnOp oper o])
+    _ -> generr
+
+genRelOp :: RelationOperator -> Expr () -> Expr () -> ExpressionGenerator
+genRelOp oper expr1 expr2 = do
+  (o1, i1) <- genExpr expr1
+  (o2, i2) <- genExpr expr2
+  (l1, l2) <- getLabels
+  case (o1, o2) of
+    (Imm _, Mem m2) ->
+      return (Nop, [ILoad m2 firstReg, IJumpCond (neg oper) firstReg o1 l2, IJump l1])
+    (Mem m1, Imm _) ->
+      return (Nop, [ILoad m1 firstReg, IJumpCond oper firstReg o2 l1, IJump l2])
+    (Mem m1, Mem _) ->
+      return (Nop, [ILoad m1 firstReg, IJumpCond oper firstReg o2 l1, IJump l2])
+    (Reg r1, Imm _) ->
+      return (Nop, i1 ++ [IJumpCond oper r1 o2 l1, IJump l2])
+    (Imm _, Reg r2) ->
+      return (Nop, i2 ++ [IJumpCond (neg oper) r2 o1 l2, IJump l1])
+    (Reg r1, Mem _) ->
+      return (Nop, i1 ++ [IJumpCond oper r1 o2 l1, IJump l2])
+    (Mem _, Reg r2) ->
+      return (Nop, i2 ++ [IJumpCond (neg oper) r2 o1 l2, IJump l1])
+    (Reg r1, Reg _) ->
+      return (Nop, i1 ++ [IJumpCond oper r1 o2 l1, IJump l2])
+    _ -> generr
+
+genBoolOp :: BinaryOperator -> Expr () -> Expr () -> ExpressionGenerator
+genBoolOp oper expr1 expr2 = do
+  (l1, l2) <- getLabels
+  l3 <- lift $ lift newLabel
+  let ll = if oper == AND then (l1, l3) else (l3, l2)
+  (o1, i1) <- local (\env -> env {labels = Just ll}) (genExpr expr1)
+  (o2, i2) <- local (\env -> env {labels = Just (l1, l2)}) (genExpr expr2)
+  let i1' = case o1 of
+        Nop -> i1
+        _ -> i1 ++ [IMov o1 firstReg, IJumpCond REQ firstReg (Imm 0) (fst ll), IJump (snd ll)]
+      i2' = case o2 of
+        Nop -> i2
+        _ -> i2 ++ [IMov o2 firstReg, IJumpCond REQ firstReg (Imm 0) l1, IJump l2]
+  return (Nop, i1' ++ i2')
+
+getLabels :: Generator (Label, Label)
+getLabels = do
+  env <- ask
+  case labels env of
+    Just ll -> return ll
+    Nothing -> do
+      l1 <- lift $ lift newLabel
+      l2 <- lift $ lift newLabel
+      return (l1, l2)
+
+neg :: RelationOperator -> RelationOperator
+neg REQ = RNE
+neg RNE = REQ
+neg RGT = RLE
+neg RGE = RLT
+neg RLT = RGE
+neg RLE = RGT
