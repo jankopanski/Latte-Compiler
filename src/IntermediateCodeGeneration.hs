@@ -29,7 +29,6 @@ data Operand
   = Reg Register
   | Mem Memory
   | Imm Integer
-  | Nop
 
 data BinaryOperator = ADD | SUB | MUL | DIV | MOD | AND | OR deriving (Eq)
 data RelationOperator = REQ | RNE | RGT | RGE | RLT | RLE deriving (Eq)
@@ -223,8 +222,8 @@ genStmt (VRet ()) = get >>= \s -> tell [IJump (returnLabel s)]
 genStmt (Cond () expr stmt) = do
   lthen <- lift $ lift newLabel
   lafter <- lift $ lift newLabel
-  (_, i) <- local (\env -> env {labels = Just (lafter, lthen)}) (genExpr expr)
-  tell $ i ++ [ILabel lthen]
+  i <- genCond expr lthen lafter
+  tell (i ++ [ILabel lthen])
   genStmt stmt
   tell [ILabel lafter]
 
@@ -232,21 +231,21 @@ genStmt (CondElse () expr stmt1 stmt2) = do
   lthen <- lift $ lift newLabel
   lelse <- lift $ lift newLabel
   lafter <- lift $ lift newLabel
-  (_, i) <- local (\env -> env {labels = Just (lelse, lthen)}) (genExpr expr)
-  tell $ i ++ [ILabel lthen]
+  i <- genCond expr lthen lelse
+  tell (i ++ [ILabel lthen])
   genStmt stmt1
-  tell [ILabel lelse]
+  tell [IJump lafter, ILabel lelse]
   genStmt stmt2
   tell [ILabel lafter]
 
 genStmt (While () expr stmt) = do
   lcond <- lift $ lift newLabel
-  lwhile <- lift $ lift newLabel
+  lloop <- lift $ lift newLabel
   lafter <- lift $ lift newLabel
-  (_, i) <- local (\env -> env {labels = Just (lafter, lwhile)}) (genExpr expr)
-  tell $ [ILabel lcond] ++ i ++ [ILabel lwhile]
+  i <- genCond expr lloop lafter
+  tell ([ILabel lcond] ++ i ++ [ILabel lloop])
   genStmt stmt
-  tell [ILabel lafter]
+  tell [IJump lcond, ILabel lafter]
 
 genStmt (SExp () expr) = genExpr expr >>= \(_, i) -> tell i
 
@@ -264,9 +263,9 @@ genExpr (EApp () ident exprs) = do
   params <- mapM genExpr exprs
   let ins = concatMap (\(o, i) -> i ++ [IParam o]) params
   return (Reg EAX, ins ++ [ICall ident (fromIntegral $ length params)])
+
 -- genExpr (EString () s) = do
 --   l <- addGlobalString s
---
 
 genExpr (Neg () expr) = genUnOp NEG expr
 
@@ -282,21 +281,11 @@ genExpr (EMul () expr1 (Div ()) expr2) = genBinOp DIV expr1 expr2
 
 genExpr (EMul () expr1 (Mod ()) expr2) = genBinOp MOD expr1 expr2
 
-genExpr (ERel () expr1 (LTH ()) expr2) = genRelOp RLT expr1 expr2
+genExpr expr@ERel{} = genCondInit expr
 
-genExpr (ERel () expr1 (LE ()) expr2) = genRelOp RLE expr1 expr2
+genExpr expr@EAnd{} = genCondInit expr
 
-genExpr (ERel () expr1 (GTH ()) expr2) = genRelOp RGT expr1 expr2
-
-genExpr (ERel () expr1 (GE ()) expr2) = genRelOp RGE expr1 expr2
-
-genExpr (ERel () expr1 (EQU ()) expr2) = genRelOp REQ expr1 expr2
-
-genExpr (ERel () expr1 (NE ()) expr2) = genRelOp RNE expr1 expr2
-
-genExpr (EAnd () expr1 expr2) = genBoolOp AND expr1 expr2
-
-genExpr (EOr () expr1 expr2) = genBoolOp OR expr1 expr2
+genExpr expr@EOr{} = genCondInit expr
 
 genBinOp :: BinaryOperator -> Expr () -> Expr () -> ExpressionGenerator
 genBinOp oper expr1 expr2 = do
@@ -345,59 +334,84 @@ genUnOp oper expr = do
     Reg _ -> return (o, i ++ [IUnOp oper o])
     _ -> generr
 
-genRelOp :: RelationOperator -> Expr () -> Expr () -> ExpressionGenerator
-genRelOp oper expr1 expr2 = do
+genRelOp :: RelationOperator -> Expr () -> Expr () -> Label -> Label -> Generator [Instruction]
+genRelOp oper expr1 expr2 ltrue lfalse = do
   (o1, i1) <- genExpr expr1
   (o2, i2) <- genExpr expr2
-  (l1, l2) <- getLabels
   case (o1, o2) of
+    (Imm _, Imm _) -> generr
     (Imm _, Mem m2) ->
-      return (Nop, [ILoad m2 firstReg, IJumpCond (neg oper) firstReg o1 l2, IJump l1])
+      return [ILoad m2 firstReg, IJumpCond (revRelOp oper) firstReg o1 ltrue, IJump lfalse]
     (Mem m1, Imm _) ->
-      return (Nop, [ILoad m1 firstReg, IJumpCond oper firstReg o2 l1, IJump l2])
+      return [ILoad m1 firstReg, IJumpCond oper firstReg o2 ltrue, IJump lfalse]
     (Mem m1, Mem _) ->
-      return (Nop, [ILoad m1 firstReg, IJumpCond oper firstReg o2 l1, IJump l2])
+      return [ILoad m1 firstReg, IJumpCond oper firstReg o2 ltrue, IJump lfalse]
     (Reg r1, Imm _) ->
-      return (Nop, i1 ++ [IJumpCond oper r1 o2 l1, IJump l2])
+      return (i1 ++ [IJumpCond oper r1 o2 ltrue, IJump lfalse])
     (Imm _, Reg r2) ->
-      return (Nop, i2 ++ [IJumpCond (neg oper) r2 o1 l2, IJump l1])
+      return (i2 ++ [IJumpCond (revRelOp oper) r2 o1 ltrue, IJump lfalse])
     (Reg r1, Mem _) ->
-      return (Nop, i1 ++ [IJumpCond oper r1 o2 l1, IJump l2])
+      return (i1 ++ [IJumpCond oper r1 o2 ltrue, IJump lfalse])
     (Mem _, Reg r2) ->
-      return (Nop, i2 ++ [IJumpCond (neg oper) r2 o1 l2, IJump l1])
+      return (i2 ++ [IJumpCond (revRelOp oper) r2 o1 ltrue, IJump lfalse])
     (Reg r1, Reg _) ->
-      return (Nop, i1 ++ [IJumpCond oper r1 o2 l1, IJump l2])
-    _ -> generr
+      return (i1 ++ [IJumpCond oper r1 o2 ltrue, IJump lfalse]) -- TODO błąd rejestry
 
-genBoolOp :: BinaryOperator -> Expr () -> Expr () -> ExpressionGenerator
-genBoolOp oper expr1 expr2 = do
-  (l1, l2) <- getLabels
-  l3 <- lift $ lift newLabel
-  let ll = if oper == AND then (l1, l3) else (l3, l2)
-  (o1, i1) <- local (\env -> env {labels = Just ll}) (genExpr expr1)
-  (o2, i2) <- local (\env -> env {labels = Just (l1, l2)}) (genExpr expr2)
-  let i1' = case o1 of
-        Nop -> i1
-        _ -> i1 ++ [IMov o1 firstReg, IJumpCond REQ firstReg (Imm 0) (fst ll), IJump (snd ll)]
-      i2' = case o2 of
-        Nop -> i2
-        _ -> i2 ++ [IMov o2 firstReg, IJumpCond REQ firstReg (Imm 0) l1, IJump l2]
-  return (Nop, i1' ++ i2')
+genCondInit :: Expr () -> ExpressionGenerator
+genCondInit expr = do
+  ltrue <- lift $ lift newLabel
+  lfalse <- lift $ lift newLabel
+  i <- genCond expr ltrue lfalse
+  lafter <- lift $ lift newLabel
+  return (Reg firstReg, i ++ [ILabel ltrue, IMov (Imm 1) firstReg, IJump lafter,
+    ILabel lfalse, IMov (Imm 0) firstReg, ILabel lafter])
 
-getLabels :: Generator (Label, Label)
-getLabels = do
-  env <- ask
-  case labels env of
-    Just ll -> return ll
-    Nothing -> do
-      l1 <- lift $ lift newLabel
-      l2 <- lift $ lift newLabel
-      return (l1, l2)
+genCond :: Expr () -> Label -> Label -> Generator [Instruction]
 
-neg :: RelationOperator -> RelationOperator
-neg REQ = RNE
-neg RNE = REQ
-neg RGT = RLE
-neg RGE = RLT
-neg RLT = RGE
-neg RLE = RGT
+genCond expr@EVar{} ltrue lfalse =
+  genRelOp REQ expr (ELitTrue ()) ltrue lfalse
+
+genCond expr@EApp{} ltrue lfalse =
+  genRelOp REQ expr (ELitTrue ()) ltrue lfalse
+
+genCond (Not () expr) ltrue lfalse = genCond expr lfalse ltrue
+
+genCond (ERel () expr1 oper expr2) ltrue lfalse =
+  genRelOp (mapRelOp oper) expr1 expr2 ltrue lfalse
+
+genCond (EAnd () expr1 expr2) ltrue lfalse = do
+  lmid <- lift $ lift newLabel
+  i1 <- genCond expr1 lmid lfalse
+  i2 <- genCond expr2 ltrue lfalse
+  return (i1 ++ [ILabel lmid] ++ i2)
+
+genCond (EOr () expr1 expr2) ltrue lfalse = do
+  lmid <- lift $ lift newLabel
+  i1 <- genCond expr1 ltrue lmid
+  i2 <- genCond expr2 ltrue lfalse
+  return (i1 ++ [ILabel lmid] ++ i2)
+
+genCond _ _ _ = generr
+
+mapRelOp :: RelOp () -> RelationOperator
+mapRelOp (LTH ()) = RLT
+mapRelOp (LE ()) = RLE
+mapRelOp (GTH ()) = RGT
+mapRelOp (GE ()) = RGE
+mapRelOp (EQU ()) = REQ
+mapRelOp (NE ()) = RNE
+
+-- negRelOp :: RelationOperator -> RelationOperator
+-- negRelOp REQ = RNE
+-- negRelOp RNE = REQ
+-- negRelOp RGT = RLE
+-- negRelOp RGE = RLT
+-- negRelOp RLT = RGE
+-- negRelOp RLE = RGT
+
+revRelOp :: RelationOperator -> RelationOperator
+revRelOp RGT = RLT
+revRelOp RGE = RLE
+revRelOp RLT = RGT
+revRelOp RLE = RGE
+revRelOp oper = oper
