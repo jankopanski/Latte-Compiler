@@ -14,10 +14,20 @@ type Size = Integer
 
 type Pointer = Integer
 
-newtype Label = Label Integer
+newtype Label = Label Integer deriving Show
 
 data Register = EBP | ESP | EAX | ECX | EDX | EBX | EDI | ESI
   deriving (Eq, Ord, Enum, Bounded)
+
+instance Show Register where
+  show EBP = "%ebp"
+  show ESP = "%esp"
+  show EAX = "%eax"
+  show ECX = "%ecx"
+  show EDX = "%edx"
+  show EBX = "%ebx"
+  show EDI = "$edi"
+  show ESI = "%esi"
 
 data Memory
   = MemoryArgument Integer
@@ -25,14 +35,30 @@ data Memory
   | MemoryOffset Register Integer
   | MemoryGlobal
 
+instance Show Memory where
+  show (MemoryArgument n) = show n ++ "(" ++ show EBP ++ ")"
+  show (MemoryLocal n) = "-" ++ show n ++ "(" ++ show EBP ++ ")"
+  show (MemoryOffset r n) = "-" ++ show n ++ "(" ++ show EBP ++ ", " ++
+                            show r ++ ", " ++ show wordLen ++ ")"
+
 data Operand
   = Reg Register
   | Mem Memory
   | Imm Integer
 
-data BinaryOperator = ADD | SUB | MUL | DIV | MOD | AND | OR deriving (Eq)
-data RelationOperator = REQ | RNE | RGT | RGE | RLT | RLE deriving (Eq)
-data UnaryOperator = NEG | NOT | INC | DEC deriving (Eq)
+instance Show Operand where
+  show (Reg r) = show r
+  show (Mem m) = show m
+  show (Imm n) = "$" ++ show n
+
+data BinaryOperator = ADD | SUB | MUL | DIV | MOD deriving Eq
+
+data RelationOperator = REQ | RNE | RGT | RGE | RLT | RLE deriving Eq
+
+instance Show RelationOperator where
+  show REQ = "eq"
+
+data UnaryOperator = NEG | NOT | INC | DEC deriving (Show, Eq)
 
 data Instruction
   = IMov Operand Register
@@ -50,6 +76,7 @@ data Instruction
   | IJumpCond RelationOperator Register Operand Label
   | IRet
   | ILabel Label
+  deriving Show
 
 data Environment = Environment {
   labels :: Maybe (Label, Label)
@@ -149,7 +176,7 @@ generr = error "Unexpected error"
 
 newLoc :: Type () -> Generator Memory
 newLoc vartype = state (\s -> let size = localSize s in
-  (MemoryLocal (-(size + wordLen)), s {localSize = size + sizeOf vartype}))
+  (MemoryLocal (size + wordLen), s {localSize = size + sizeOf vartype}))
 
 getLoc :: Ident -> Generator Memory
 getLoc ident = get >>= \s -> return $ variableEnv s ! ident
@@ -292,6 +319,7 @@ genBinOp oper expr1 expr2 = do
   (o1, i1) <- genExpr expr1
   (o2, i2) <- genExpr expr2
   case (o1, o2) of
+    (Imm _, Imm _) -> generr
     (Mem m1, Imm _) ->
       return (Reg firstReg, [ILoad m1 firstReg, IBinOp oper firstReg o2])
     (Imm _, Mem m2) ->
@@ -324,7 +352,6 @@ genBinOp oper expr1 expr2 = do
           (o1, i2 ++ [IPush r2] ++ i1 ++ [IPop r3, IBinOp oper r1 (Reg r3)])
         else let r3 = nextReg r1 in
           (Reg r3, i1 ++ [IMov o1 r3] ++ i2 ++ [IBinOp oper r3 o2])
-    _ -> generr
 
 genUnOp :: UnaryOperator -> Expr () -> ExpressionGenerator
 genUnOp oper expr = do

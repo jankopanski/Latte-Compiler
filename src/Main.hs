@@ -11,7 +11,8 @@ import ErrM
 import TypeControl (checkTypes)
 import ExpressionEvaluation (evalProgram)
 import ReturnEvaluation (returnEvalProgram)
-import IntermediateCodeGeneration
+import IntermediateCodeGeneration (runIntermediateCodeGeneration)
+import AssemblyPrinter (runAssemblyPrinter)
 
 type Verbosity = Int
 
@@ -62,5 +63,6 @@ run v f =
       retOptTree <- returnEvalProgram optTree
       putStrV v "Return optimisation completed"
       showTree v retOptTree
-      let newTree = void retOptTree
+      code <- runIntermediateCodeGeneration (void retOptTree)
+      runAssemblyPrinter code
       exitSuccess
