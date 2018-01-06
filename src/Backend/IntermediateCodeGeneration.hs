@@ -107,16 +107,17 @@ instance Show Instruction where
     "\tcall " ++ s ++ nextins (IBinOp ADD ESP (Imm n))
   show (IBinOp DIV r1 o2) = -- TODO poprawić dzielenie
     show (IPush EDX) ++ nextins (IPush EAX) ++ nextins (IMov (Reg r1) EAX) ++
-    nextins "\tcdq" ++ nextins (showSingle (show DIV) o2) ++ nextins (IMov (Reg EAX) r1)
+    nextins "\tcdq\n" ++ showSingle (show DIV) o2 ++ nextins (IMov (Reg EAX) r1)
     ++ nextins (IPop EAX) ++ nextins (IPop EDX)
   show (IBinOp MOD r1 o2) =
     show (IPush EDX) ++ nextins (IPush EAX) ++ nextins (IMov (Reg r1) EAX) ++
-    nextins "\tcdq" ++ nextins (showSingle (show MOD) o2) ++ nextins (IMov (Reg EDX) r1)
+    nextins "\tcdq\n" ++ showSingle (show MOD) o2 ++ nextins (IMov (Reg EDX) r1)
     ++ nextins (IPop EAX) ++ nextins (IPop EDX)
   show (IBinOp op r1 o2) = showDouble (show op) o2 r1
   show (IUnOp op o) = showSingle (show op) o
   show (IJump l) = showSingle "jmp" l
-  show (IJumpCond op r1 o2 l) = showDouble "cmpl" o2 r1 ++ nextins (showSingle (show op) l)
+  show (IJumpCond op r1 o2 l) =
+    showDouble "cmpl" o2 r1 ++ "\n" ++ showSingle (show op) l
   show IRet = "\tret"
   show (ILabel l) = show l ++ ":"
 
