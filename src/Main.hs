@@ -12,7 +12,7 @@ import TypeControl (checkTypes)
 import ExpressionEvaluation (evalProgram)
 import ReturnEvaluation (returnEvalProgram)
 import IntermediateCodeGeneration (runIntermediateCodeGeneration)
-import AssemblyPrinter (runAssemblyPrinter)
+import AssemblyPrinter (generateAssembly, generateFile)
 
 type Verbosity = Int
 
@@ -64,5 +64,7 @@ run v f =
       putStrV v "Return optimisation completed"
       showTree v retOptTree
       code <- runIntermediateCodeGeneration (void retOptTree)
-      runAssemblyPrinter code
+      asm <- generateAssembly code
+      putStrV v asm
+      generateFile f asm
       exitSuccess

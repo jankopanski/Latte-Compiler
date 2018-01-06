@@ -5,7 +5,6 @@ import Control.Monad.Writer
 import Control.Monad.Reader
 
 import Data.Map (Map, empty, (!), insert)
--- import Data.Maybe (isJust, fromJust)
 
 import AbsLatte
 
@@ -14,7 +13,10 @@ type Size = Integer
 
 type Pointer = Integer
 
-newtype Label = Label Integer deriving Show
+newtype Label = Label Integer
+
+instance Show Label where
+  show (Label n) = ".L" ++ show n
 
 data Register = EBP | ESP | EAX | ECX | EDX | EBX | EDI | ESI
   deriving (Eq, Ord, Enum, Bounded)
@@ -53,30 +55,79 @@ instance Show Operand where
 
 data BinaryOperator = ADD | SUB | MUL | DIV | MOD deriving Eq
 
+instance Show BinaryOperator where
+  show ADD = "addl"
+  show SUB = "subl"
+  show MUL = "imull"
+  show DIV = "idivl"
+  show MOD = "idivl"
+
 data RelationOperator = REQ | RNE | RGT | RGE | RLT | RLE deriving Eq
 
 instance Show RelationOperator where
-  show REQ = "eq"
+  show REQ = "je"
+  show RNE = "jne"
+  show RGT = "jg"
+  show RGE = "jge"
+  show RLT = "jl"
+  show RLE = "jle"
 
-data UnaryOperator = NEG | NOT | INC | DEC deriving (Show, Eq)
+data UnaryOperator = NEG | INC | DEC deriving Eq
+
+instance Show UnaryOperator where
+  show NEG = "neg"
+  show INC = "inc"
+  show DEC = "dec"
 
 data Instruction
   = IMov Operand Register
   | ILoad Memory Register
   | IStore Operand Memory
+  | IXchg Register Register
   | IPush Register
   | IPop Register
-  | IXchg Register Register
-  | IBinOp BinaryOperator Register Operand
-  -- | IRelOp RelationOperator Operand Operand
-  | IUnOp UnaryOperator Operand
   | IParam Operand
   | ICall Ident Integer
+  | IBinOp BinaryOperator Register Operand
+  | IUnOp UnaryOperator Operand
   | IJump Label
   | IJumpCond RelationOperator Register Operand Label
   | IRet
   | ILabel Label
-  deriving Show
+
+instance Show Instruction where
+  show (IMov o1 r2) = showDouble "movl" o1 r2
+  show (ILoad m1 r2) = showDouble "movl" m1 r2
+  show (IStore o1 m2) = showDouble "movl" o1 m2
+  show (IXchg r1 r2) = showDouble "xchgl" r1 r2
+  show (IPush r) = showSingle "pushl" r
+  show (IPop r) = showSingle "popl" r
+  show (IParam o) = showSingle "pushl" o
+  show (ICall (Ident s) n) =
+    "\tcall " ++ s ++ nextins (IBinOp ADD ESP (Imm n))
+  show (IBinOp DIV r1 o2) = -- TODO poprawić dzielenie
+    show (IPush EDX) ++ nextins (IPush EAX) ++ nextins (IMov (Reg r1) EAX) ++
+    nextins "\tcdq" ++ nextins (showSingle (show DIV) o2) ++ nextins (IMov (Reg EAX) r1)
+    ++ nextins (IPop EAX) ++ nextins (IPop EDX)
+  show (IBinOp MOD r1 o2) =
+    show (IPush EDX) ++ nextins (IPush EAX) ++ nextins (IMov (Reg r1) EAX) ++
+    nextins "\tcdq" ++ nextins (showSingle (show MOD) o2) ++ nextins (IMov (Reg EDX) r1)
+    ++ nextins (IPop EAX) ++ nextins (IPop EDX)
+  show (IBinOp op r1 o2) = showDouble (show op) o2 r1
+  show (IUnOp op o) = showSingle (show op) o
+  show (IJump l) = showSingle "jmp" l
+  show (IJumpCond op r1 o2 l) = showDouble "cmpl" o2 r1 ++ nextins (showSingle (show op) l)
+  show IRet = "\tret"
+  show (ILabel l) = show l ++ ":"
+
+nextins :: Show a => a -> String
+nextins ins = "\n" ++ show ins
+
+showSingle :: Show a => String -> a -> String
+showSingle ins arg = "\t" ++ ins ++ " " ++ show arg
+
+showDouble :: (Show a, Show b) => String -> a -> b -> String
+showDouble ins arg1 arg2 = "\t" ++ ins ++ " " ++ show arg1 ++ ", " ++ show arg2
 
 data Environment = Environment {
   labels :: Maybe (Label, Label)
@@ -296,7 +347,7 @@ genExpr (EApp () ident exprs) = do
 
 genExpr (Neg () expr) = genUnOp NEG expr
 
-genExpr (Not () expr) = genUnOp NOT expr
+genExpr expr@Not{} = genCondInit expr
 
 genExpr (EAdd () expr1 (Plus ()) expr2) = genBinOp ADD expr1 expr2
 
