@@ -83,10 +83,10 @@ instance Eq (Type e) where
   _ == _ = False
 
 instance Show (Type e) where
-  show Int{} = "Int"
-  show Str{} = "Str"
-  show Bool{} = "Bool"
-  show Void{} = "Void"
+  show Int{} = "int"
+  show Str{} = "string"
+  show Bool{} = "boolean"
+  show Void{} = "void"
   show (Fun _ ret args) =
     "Function " ++ show ret ++ "(" ++
     (if null args then ""

@@ -7,6 +7,7 @@ import Control.Monad (when, void)
 import Parser.ParLatte
 import Parser.PrintLatte
 import Parser.ErrM
+import Frontend.Globals (putError)
 import Frontend.TypeControl (runTypeControl)
 import Frontend.StaticEvaluation (runStaticEvaluation)
 import Frontend.ReturnEvaluation (runReturnEvaluation)
@@ -28,7 +29,7 @@ usage = putStrLn $ unlines
   [ "usage: Call with one of the following argument combinations:"
   , "  --help         Display this help message."
   , "  (file)         Parse content of files verbosely."
-  , "  -s (file)      Silent mode. Parse content of files silently."
+  , "  -v (file)      Verbose mode."
   ]
 
 main :: IO ()
@@ -37,8 +38,8 @@ main = do
   case args of
     [] -> usage >> exitFailure
     ["--help"] -> usage >> exitSuccess
-    "-s":[f] -> run 0 f
-    [f] -> run 2 f
+    "-s":[f] -> run 2 f
+    [f] -> run 0 f
     _ -> putStrLn "Invalid flag or number of files - one file allowed only"
 
 run :: Verbosity -> FilePath -> IO ()
@@ -49,8 +50,7 @@ run v f =
     Bad err -> do
       putStrV v "Tokens:"
       putStrV v $ show lexemes
-      putStrLn err
-      exitFailure
+      putError err
     Ok tree -> do
       putStrV v "Parse completed"
       showTree v tree
@@ -67,4 +67,5 @@ run v f =
       putStrV v asm
       generateFile f asm
       generateExecutable f
+      putStrLn "OK"
       exitSuccess

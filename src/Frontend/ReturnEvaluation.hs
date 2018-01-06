@@ -2,10 +2,8 @@ module Frontend.ReturnEvaluation where
 
 -- Imports --
 
-import System.Exit (exitFailure)
-
-import Frontend.Globals
 import Parser.AbsLatte
+import Frontend.Globals
 
 -- Data structures --
 
@@ -16,10 +14,9 @@ returnEvalProgram :: Program Position -> IO (Program Position)
 returnEvalProgram (Program pos topdefs) =
   case mapM returnEvalTopDef topdefs of
     Right topdefs' -> return $ Program pos topdefs'
-    Left (Ident name, errpos) -> do
-      putStrLn $ showErrorPosition errpos ++
+    Left (Ident name, errpos) ->
+      putError $ showErrorPosition errpos ++
         "No return statement in function '" ++ name ++ "'"
-      exitFailure
 
 returnEvalTopDef :: TopDef Position -> Either (Ident, Position) (TopDef Position)
 returnEvalTopDef (FnDef pos ret ident args block) =

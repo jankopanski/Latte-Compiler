@@ -110,7 +110,7 @@ getVarType name = do
 runTypeControl :: Program Position -> IO ()
 runTypeControl program =
   case evalState (runExceptT (checkProgram program)) (Map.empty, Map.empty) of
-    Left err -> print err >> exitFailure
+    Left err -> printError err
     Right _ -> return ()
 
 checkProgram :: Program Position -> Checker ()
