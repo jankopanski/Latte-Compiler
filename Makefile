@@ -1,7 +1,14 @@
-all:
+all: build lib
+
+build:
 	$(MAKE) -C src all
-	cp src/Main ./latc_x86
+	cp src/Main ./compiler
+
+lib: lib/lib.o
+
+lib/lib.o: lib/lib.c
+	gcc -m32 -c lib/lib.c -o lib/lib.o
 
 clean:
 	$(MAKE) -C src clean
-	rm -f latc_x86
+	rm -f compiler lib/lib.o
