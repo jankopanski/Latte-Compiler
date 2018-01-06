@@ -11,7 +11,7 @@ import Frontend.TypeControl (runTypeControl)
 import Frontend.StaticEvaluation (runStaticEvaluation)
 import Frontend.ReturnEvaluation (runReturnEvaluation)
 import Backend.IntermediateCodeGeneration (runIntermediateCodeGeneration)
-import Backend.AssemblyGeneration (generateAssembly, generateFile)
+import Backend.AssemblyGeneration (generateAssembly, generateFile, generateExecutable)
 
 type Verbosity = Int
 
@@ -66,4 +66,5 @@ run v f =
       asm <- generateAssembly code
       putStrV v asm
       generateFile f asm
+      generateExecutable f
       exitSuccess
