@@ -100,9 +100,9 @@ instance Show Instruction where
   show (ILoad m1 r2) = showDouble "movl" m1 r2
   show (IStore o1 m2) = showDouble "movl" o1 m2
   show (IXchg r1 r2) = showDouble "xchgl" r1 r2
-  show (IPush r) = showSingle "pushl" r
-  show (IPop r) = showSingle "popl" r
-  show (IParam o) = showSingle "pushl" o
+  show (IPush r) = showSingle "push" r
+  show (IPop r) = showSingle "pop" r
+  show (IParam o) = showSingle "push" o
   show (ICall (Ident s) n) =
     "\tcall " ++ s ++ nextins (IBinOp ADD ESP (Imm n))
   show (IBinOp DIV r1 o2) = -- TODO poprawić dzielenie

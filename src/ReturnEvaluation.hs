@@ -33,7 +33,7 @@ returnEvalBlock (Block pos stmts) =
     takeWhileEvalStmt :: [Stmt Position] -> [Stmt Position] -> ([Stmt Position], Bool)
     takeWhileEvalStmt [] l = (reverse l, False)
     takeWhileEvalStmt (h:t) l = let (s, b) = returnEvalStmt h in
-      if b then (reverse l, True) else takeWhileEvalStmt t (s:l)
+      if b then (reverse (s:l), True) else takeWhileEvalStmt t (s:l)
 
 returnEvalStmt :: Stmt Position -> (Stmt Position, Bool)
 
