@@ -7,6 +7,9 @@ import Parser.AbsLatte
 
 -- Top functions --
 
+runStaticEvaluation :: Program Position -> IO (Program Position)
+runStaticEvaluation = return . evalProgram
+
 evalProgram :: Program Position -> Program Position
 evalProgram (Program pos topdefs) = Program pos (map evalTopDef topdefs)
 

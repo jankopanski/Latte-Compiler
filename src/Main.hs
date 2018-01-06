@@ -7,12 +7,11 @@ import Control.Monad (when, void)
 import Parser.ParLatte
 import Parser.PrintLatte
 import Parser.ErrM
-
-import Frontend.TypeControl (checkTypes)
-import Frontend.StaticEvaluation (evalProgram)
-import Frontend.ReturnEvaluation (returnEvalProgram)
+import Frontend.TypeControl (runTypeControl)
+import Frontend.StaticEvaluation (runStaticEvaluation)
+import Frontend.ReturnEvaluation (runReturnEvaluation)
 import Backend.IntermediateCodeGeneration (runIntermediateCodeGeneration)
-import Backend.AssemblyPrinter (generateAssembly, generateFile)
+import Backend.AssemblyGeneration (generateAssembly, generateFile)
 
 type Verbosity = Int
 
@@ -55,12 +54,12 @@ run v f =
     Ok tree -> do
       putStrV v "Parse completed"
       showTree v tree
-      checkTypes tree
+      runTypeControl tree
       putStrV v "Type check completed\n"
-      let optTree = evalProgram tree
+      optTree <- runStaticEvaluation tree
       putStrV v "Static evaluation completed"
       showTree v optTree
-      retOptTree <- returnEvalProgram optTree
+      retOptTree <- runReturnEvaluation optTree
       putStrV v "Return optimisation completed"
       showTree v retOptTree
       code <- runIntermediateCodeGeneration (void retOptTree)

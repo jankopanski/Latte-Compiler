@@ -9,6 +9,9 @@ import Parser.AbsLatte
 
 -- Data structures --
 
+runReturnEvaluation :: Program Position -> IO (Program Position)
+runReturnEvaluation = returnEvalProgram
+
 returnEvalProgram :: Program Position -> IO (Program Position)
 returnEvalProgram (Program pos topdefs) =
   case mapM returnEvalTopDef topdefs of

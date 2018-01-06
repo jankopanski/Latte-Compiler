@@ -107,8 +107,8 @@ getVarType name = do
 
 -- Top functions --
 
-checkTypes :: Program Position -> IO ()
-checkTypes program =
+runTypeControl :: Program Position -> IO ()
+runTypeControl program =
   case evalState (runExceptT (checkProgram program)) (Map.empty, Map.empty) of
     Left err -> print err >> exitFailure
     Right _ -> return ()

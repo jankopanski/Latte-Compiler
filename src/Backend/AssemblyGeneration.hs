@@ -1,4 +1,4 @@
-module Backend.AssemblyPrinter where
+module Backend.AssemblyGeneration where
 
 import System.FilePath (replaceExtension)
 
