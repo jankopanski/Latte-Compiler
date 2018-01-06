@@ -4,15 +4,15 @@ import System.Environment (getArgs)
 import System.Exit (exitFailure, exitSuccess)
 import Control.Monad (when, void)
 
-import ParLatte
-import PrintLatte
-import ErrM
+import Parser.ParLatte
+import Parser.PrintLatte
+import Parser.ErrM
 
-import TypeControl (checkTypes)
-import ExpressionEvaluation (evalProgram)
-import ReturnEvaluation (returnEvalProgram)
-import IntermediateCodeGeneration (runIntermediateCodeGeneration)
-import AssemblyPrinter (generateAssembly, generateFile)
+import Frontend.TypeControl (checkTypes)
+import Frontend.StaticEvaluation (evalProgram)
+import Frontend.ReturnEvaluation (returnEvalProgram)
+import Backend.IntermediateCodeGeneration (runIntermediateCodeGeneration)
+import Backend.AssemblyPrinter (generateAssembly, generateFile)
 
 type Verbosity = Int
 
