@@ -38,9 +38,9 @@ main = do
   case args of
     [] -> usage >> exitFailure
     ["--help"] -> usage >> exitSuccess
-    "-s":[f] -> run 2 f
+    "-v":[f] -> run 2 f
     [f] -> run 0 f
-    _ -> putStrLn "Invalid flag or number of files - one file allowed only"
+    _ -> putStrLn "Invalid flag or number of files"
 
 run :: Verbosity -> FilePath -> IO ()
 run v f =

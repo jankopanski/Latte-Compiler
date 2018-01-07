@@ -73,13 +73,13 @@ evalExpr (EApp pos ident exprs) = EApp pos ident (map evalExpr exprs)
 
 evalExpr e@(Neg pos expr) =
   case evalExpr expr of
-    ELitTrue _ -> ELitFalse pos
-    ELitFalse _ -> ELitTrue pos
+    ELitInt _ n -> ELitInt pos (-n)
     _ -> e
 
 evalExpr e@(Not pos expr) =
   case evalExpr expr of
-    ELitInt _ n -> ELitInt pos (-n)
+    ELitTrue _ -> ELitFalse pos
+    ELitFalse _ -> ELitTrue pos
     _ -> e
 
 evalExpr e@(EAdd pos expr1 (Plus _) expr2) =

@@ -104,7 +104,7 @@ instance Show Instruction where
   show (IPop r) = showSingle "pop" r
   show (IParam o) = showSingle "push" o
   show (ICall (Ident s) n) =
-    "\tcall " ++ s ++ nextins (IBinOp ADD ESP (Imm n))
+    "\tcall " ++ s ++ nextins (IBinOp ADD ESP (Imm (n*wordLen)))
   show (IBinOp DIV r1 o2) = -- TODO poprawić dzielenie
     show (IPush EDX) ++ nextins (IPush EAX) ++ nextins (IMov (Reg r1) EAX) ++
     nextins "\tcdq\n" ++ showSingle (show DIV) o2 ++ nextins (IMov (Reg EAX) r1)
@@ -223,8 +223,8 @@ epilog lab reg = pops ++ [ILabel lab, IMov (Reg EBP) ESP, IPop EBP, IRet] where
 newLabel :: TopGenerator Label
 newLabel = state (\s -> let n = labelCounter s in (Label n, s {labelCounter = n + 1}))
 
-generr :: Generator a
-generr = error "Unexpected error"
+generr :: Show a => a -> Generator b
+generr err = error $ "Unexpected error\n" ++ show err
 
 newLoc :: Type () -> Generator Memory
 newLoc vartype = state (\s -> let size = localSize s in
@@ -246,11 +246,12 @@ genTopDef :: TopDef () -> TopGenerator (Ident, [Instruction])
 genTopDef (FnDef () _ ident args block) = do
   let env = getArgEnv args
   l <- newLabel
-  s <- get
-  put (s {localSize = 0, variableEnv = env, returnLabel = l})
+  s1 <- get
+  put (s1 {localSize = 0, variableEnv = env, returnLabel = l})
   ins <- execWriterT (runReaderT (genBlock block) emptyEnvironment)
+  s2 <- get
   let callieSave = usedCallieSave ins
-      fullIns = prolog (localSize s) callieSave ++ ins ++ epilog l callieSave
+      fullIns = prolog (localSize s2) callieSave ++ ins ++ epilog l callieSave
   return (ident, fullIns)
 
 genBlock :: Block () -> StatementGenerator
@@ -371,7 +372,7 @@ genBinOp oper expr1 expr2 = do
   (o1, i1) <- genExpr expr1
   (o2, i2) <- genExpr expr2
   case (o1, o2) of
-    (Imm _, Imm _) -> generr
+    (Imm _, Imm _) -> generr (oper, expr1, expr2)
     (Mem m1, Imm _) ->
       return (Reg firstReg, [ILoad m1 firstReg, IBinOp oper firstReg o2])
     (Imm _, Mem m2) ->
@@ -409,16 +410,16 @@ genUnOp :: UnaryOperator -> Expr () -> ExpressionGenerator
 genUnOp oper expr = do
   (o, i) <- genExpr expr
   case o of
+    Imm _ -> generr (oper, expr)
     Mem m -> return (Reg firstReg, i ++ [ILoad m firstReg, IUnOp oper (Reg firstReg)])
     Reg _ -> return (o, i ++ [IUnOp oper o])
-    _ -> generr
 
 genRelOp :: RelationOperator -> Expr () -> Expr () -> Label -> Label -> Generator [Instruction]
 genRelOp oper expr1 expr2 ltrue lfalse = do
   (o1, i1) <- genExpr expr1
   (o2, i2) <- genExpr expr2
   case (o1, o2) of
-    (Imm _, Imm _) -> generr
+    (Imm _, Imm _) -> generr (oper, expr1, expr2, ltrue, lfalse)
     (Imm _, Mem m2) ->
       return [ILoad m2 firstReg, IJumpCond (revRelOp oper) firstReg o1 ltrue, IJump lfalse]
     (Mem m1, Imm _) ->
@@ -470,7 +471,7 @@ genCond (EOr () expr1 expr2) ltrue lfalse = do
   i2 <- genCond expr2 ltrue lfalse
   return (i1 ++ [ILabel lmid] ++ i2)
 
-genCond _ _ _ = generr
+genCond _ _ _ = generr ()
 
 mapRelOp :: RelOp () -> RelationOperator
 mapRelOp (LTH ()) = RLT

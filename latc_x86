@@ -4,4 +4,9 @@ set -e
 SCRIPT=$(readlink -f "$0")
 SPATH=$(dirname "$SCRIPT")
 "$SPATH/compiler" "$@"
-gcc -m32 "$SPATH/lib/runtime.o" "${1%.*}.s" -o "${1%.lat}"
+if [ -f $1 ]; then
+  FILE=$1
+else
+  FILE=$2
+fi
+gcc -m32 "$SPATH/lib/runtime.o" "${FILE%.*}.s" -o "${FILE%.lat}"
