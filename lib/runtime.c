@@ -7,6 +7,8 @@ struct string {
   char text[];
 };
 
+static struct string _emptyString = { 0 };
+
 struct string * _allocString(char *str, size_t len) {
   struct string *res = malloc(sizeof(size_t) + len);
   res->length = len;
@@ -32,6 +34,20 @@ int readInt() {
   return n;
 }
 
-// void readString(struct string *str) {
-//   scanf("%s\n", str);
-// }
+struct string * readString() {
+  struct string *str;
+  char *tmp;
+  ssize_t len = 0;
+  len = getline(&tmp, (size_t *) &len, stdin);
+  if (len <= 0) {
+    str = &_emptyString;
+  }
+  else {
+    if (tmp[len - 1] == '\n') --len;
+    str = malloc(sizeof(size_t) + len);
+    str->length = (size_t) len;
+    memcpy(str->text, tmp, len);
+  }
+  free(tmp);
+  return str;
+}
