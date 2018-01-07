@@ -356,7 +356,8 @@ genExpr (ELitFalse ()) = return (Imm 0, [])
 
 genExpr (EApp () ident exprs) = do
   params <- mapM genExpr exprs
-  let ins = concatMap (\(o, i) -> i ++ [IParam o]) params
+  -- let ins = concatMap (\(o, i) -> i ++ [IParam o]) params
+  let ins = foldl (\ins' (o, i) -> i ++ [IParam o] ++ ins') [] params
   return (Reg EAX, ins ++ [ICall ident (fromIntegral $ length params)])
 
 genExpr (EString () s) = do

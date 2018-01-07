@@ -1,7 +1,7 @@
 module Frontend.StringEvaluation where
 
 import Control.Monad.State
-import Data.Set hiding (foldl)
+import Data.Set hiding (foldl, map)
 
 import Parser.AbsLatte
 import Frontend.Globals
@@ -26,8 +26,9 @@ runStringEvaluation program = return $ evalState (strEvalProgram program) empty
 
 strEvalProgram :: Program Position -> Evaluator (Program Position)
 strEvalProgram (Program pos topdefs) = do
-  let funs = foldl addFunction empty topdefs
-  put funs
+  let funs = foldl addFunction empty inbuildFunctions
+      funs' = foldl addFunction funs topdefs
+  put funs'
   topdefs' <- mapM strEvalTopDef topdefs
   return (Program pos topdefs')
   where
@@ -99,7 +100,10 @@ strEvalExpr :: Expr Position -> ExpressionEvaluator
 
 strEvalExpr e@(EVar _ ident) = isString ident >>= \b -> return (b, e)
 
-strEvalExpr e@(EApp _ ident _) = isString ident >>= \b -> return (b, e)
+strEvalExpr (EApp pos ident exprs) = do
+  b <- isString ident
+  evals <- mapM strEvalExpr exprs
+  return (b, EApp pos ident (map snd evals))
 
 strEvalExpr e@EString{} = return (True, e)
 

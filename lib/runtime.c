@@ -16,6 +16,18 @@ struct string * _allocString(char *str, size_t len) {
   return res;
 }
 
+struct string * _concatString(struct string * str1, struct string * str2) {
+  struct string *res = malloc(sizeof(size_t) + str1->length + str2->length);
+  res->length = str1->length + str2->length;
+  memcpy(res->text, str1->text, str1->length);
+  memcpy(res->text + str1->length, str2->text, str2->length);
+  return res;
+}
+
+int _cmpString(struct string * str1, struct string * str2) {
+  return !strcmp(str1->text, str2->text);
+}
+
 void printInt(int n) {
   printf("%d\n", n);
 }
@@ -26,6 +38,7 @@ void printString(struct string *str) {
 
 void error() {
   printf("runtime error\n");
+  exit(EXIT_FAILURE);
 }
 
 int readInt() {
@@ -39,7 +52,10 @@ struct string * readString() {
   char *tmp;
   ssize_t len = 0;
   len = getline(&tmp, (size_t *) &len, stdin);
-  if (len <= 0) {
+  if (len < 0) {
+    error();
+  }
+  if (len == 0) {
     str = &_emptyString;
   }
   else {
