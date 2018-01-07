@@ -77,6 +77,15 @@ inbuildFunctions =
   FnDef Nothing (Void Nothing) (Ident "error") [] (Block Nothing []),
   FnDef Nothing (Int Nothing) (Ident "readInt") [] (Block Nothing []),
   FnDef Nothing (Str Nothing) (Ident "readString") [] (Block Nothing [])
+  -- FnDef Nothing (Str Nothing) (Ident "_allocString")
+  --   [Arg Nothing (Void Nothing) (Ident ""), Arg Nothing (Int Nothing) (Ident "")]
+  --   (Block Nothing []),
+  -- FnDef Nothing (Str Nothing) (Ident "_concatString")
+  --   [Arg Nothing (Str Nothing) (Ident ""), Arg Nothing (Str Nothing) (Ident "")]
+  --   (Block Nothing []),
+  -- FnDef Nothing (Bool Nothing) (Ident "_cmpString")
+  --   [Arg Nothing (Str Nothing) (Ident ""), Arg Nothing (Str Nothing) (Ident "")]
+  --   (Block Nothing [])
   ]
 
 getPositionFromType :: Type Position -> Position
