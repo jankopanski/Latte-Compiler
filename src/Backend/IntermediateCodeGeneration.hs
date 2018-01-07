@@ -434,7 +434,8 @@ genUnOp oper expr = do
     Mem m -> return (Reg firstReg, i ++ [ILoad m firstReg, IUnOp oper (Reg firstReg)])
     Reg _ -> return (o, i ++ [IUnOp oper o])
 
-genRelOp :: RelationOperator -> Expr () -> Expr () -> Label -> Label -> Generator [Instruction]
+genRelOp :: RelationOperator -> Expr () -> Expr () ->
+            Label -> Label -> Generator [Instruction]
 genRelOp oper expr1 expr2 ltrue lfalse = do
   (o1, i1) <- genExpr expr1
   (o2, i2) <- genExpr expr2
@@ -454,8 +455,15 @@ genRelOp oper expr1 expr2 ltrue lfalse = do
       return (i1 ++ [IJumpCond oper r1 o2 ltrue, IJump lfalse])
     (Mem _, Reg r2) ->
       return (i2 ++ [IJumpCond (revRelOp oper) r2 o1 ltrue, IJump lfalse])
-    (Reg r1, Reg _) ->
-      return (i1 ++ [IJumpCond oper r1 o2 ltrue, IJump lfalse]) -- TODO błąd rejestry
+    (Reg r1, Reg r2) -> case compare r1 r2 of
+      GT -> return (i1 ++ i2 ++ [IJumpCond oper r1 o2 ltrue, IJump lfalse])
+      LT -> return (i2 ++ i1 ++ [IJumpCond (revRelOp oper) r2 o1 ltrue, IJump lfalse])
+      EQ -> return $ if r1 == lastReg
+        then let r3 = firstReg in
+          (i2 ++ [IPush r2] ++ i1 ++
+          [IPop r3, IJumpCond oper r1 (Reg r3) ltrue, IJump lfalse])
+        else let r3 = nextReg r1 in
+          (i1 ++ [IMov o1 r3] ++ i2 ++ [IJumpCond oper r3 o2 ltrue, IJump lfalse])
 
 genCondInit :: Expr () -> ExpressionGenerator
 genCondInit expr = do
