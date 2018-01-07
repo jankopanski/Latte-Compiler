@@ -108,12 +108,12 @@ instance Show Instruction where
   show (ICall (Ident s) n) =
     "\tcall " ++ s ++ nextins (IBinOp ADD ESP (Imm (n*wordLen)))
   show (IBinOp DIV r1 o2) = -- TODO poprawić dzielenie
-    show (IPush EDX) ++ nextins (IPush EAX) ++ nextins (IMov (Reg r1) EAX) ++
-    nextins "\tcdq\n" ++ showSingle (show DIV) o2 ++ nextins (IMov (Reg EAX) r1)
+    show (IPush EDX) ++ nextins (IPush EAX) ++ nextins (IMov (Reg r1) EAX)
+    ++ "\n\tcdq\n" ++ showSingle (show DIV) o2 ++ nextins (IMov (Reg EAX) r1)
     ++ nextins (IPop EAX) ++ nextins (IPop EDX)
   show (IBinOp MOD r1 o2) =
-    show (IPush EDX) ++ nextins (IPush EAX) ++ nextins (IMov (Reg r1) EAX) ++
-    nextins "\tcdq\n" ++ showSingle (show MOD) o2 ++ nextins (IMov (Reg EDX) r1)
+    show (IPush EDX) ++ nextins (IPush EAX) ++ nextins (IMov (Reg r1) EAX)
+    ++ "\n\tcdq\n" ++ showSingle (show MOD) o2 ++ nextins (IMov (Reg EDX) r1)
     ++ nextins (IPop EAX) ++ nextins (IPop EDX)
   show (IBinOp op r1 o2) = showDouble (show op) o2 r1
   show (IUnOp op o) = showSingle (show op) o
@@ -363,7 +363,7 @@ genExpr (EApp () ident exprs) = do
 genExpr (EString () s) = do
   l <- getStringLabel s
   return (Reg EAX, [
-    IParam (Imm (fromIntegral $ length s - 2)),
+    IParam (Imm (fromIntegral $ length s)),
     IParam (Mem (MemoryGlobal l)),
     ICall (Ident "_allocString") 2])
 

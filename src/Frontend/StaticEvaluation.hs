@@ -71,6 +71,8 @@ evalExpr :: Expr Position -> Expr Position
 
 evalExpr (EApp pos ident exprs) = EApp pos ident (map evalExpr exprs)
 
+evalExpr (EString pos s) = EString pos (read s)
+
 evalExpr (Neg pos expr) =
   case evalExpr expr of
     ELitInt _ n -> ELitInt pos (-n)
