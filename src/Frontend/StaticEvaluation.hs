@@ -98,7 +98,7 @@ evalExpr (EMul pos expr1 op@(Times _) expr2) =
     (ELitInt _ n1, ELitInt _ n2) -> ELitInt pos (n1 * n2)
     _ -> EMul pos (evalExpr expr1) op (evalExpr expr2)
 
--- TODO zero could invoke error
+-- TODO zero must invoke error
 evalExpr (EMul pos expr1 op@(Div _) expr2) =
   case (evalExpr expr1, evalExpr expr2) of
     (ELitInt _ _, ELitInt _ 0) -> EMul pos (evalExpr expr1) op (evalExpr expr2)
@@ -143,18 +143,18 @@ evalExpr (ERel pos expr1 op expr2) =
 
 evalExpr (EAnd pos expr1 expr2) =
   case (evalExpr expr1, evalExpr expr2) of
-    (ELitTrue _, ELitTrue _) -> ELitTrue pos
-    (ELitFalse _, ELitFalse _) -> ELitFalse pos
-    (ELitFalse _, ELitTrue _) -> ELitFalse pos
-    (ELitTrue _, ELitFalse _) -> ELitFalse pos
+    (_, ELitFalse _) -> ELitFalse pos
+    (ELitFalse _, _) -> ELitFalse pos
+    (_, ELitTrue _) -> evalExpr expr1
+    (ELitTrue _, _) -> evalExpr expr2
     _ -> EAnd pos (evalExpr expr1) (evalExpr expr2)
 
 evalExpr (EOr pos expr1 expr2) =
   case (evalExpr expr1, evalExpr expr2) of
-    (ELitTrue _, ELitTrue _) -> ELitTrue pos
-    (ELitFalse _, ELitFalse _) -> ELitFalse pos
-    (ELitFalse _, ELitTrue _) -> ELitTrue pos
-    (ELitTrue _, ELitFalse _) -> ELitTrue pos
+    (_, ELitTrue _) -> ELitTrue pos
+    (ELitTrue _, _) -> ELitTrue pos
+    (_, ELitFalse _) -> evalExpr expr1
+    (ELitFalse _, _) -> evalExpr expr2
     _ -> EAnd pos (evalExpr expr1) (evalExpr expr2)
 
 evalExpr e = e
