@@ -469,8 +469,8 @@ genCondInit :: Expr () -> ExpressionGenerator
 genCondInit expr = do
   ltrue <- lift $ lift newLabel
   lfalse <- lift $ lift newLabel
-  i <- genCond expr ltrue lfalse
   lafter <- lift $ lift newLabel
+  i <- genCond expr ltrue lfalse
   return (Reg firstReg, i ++ [ILabel ltrue, IMov (Imm 1) firstReg, IJump lafter,
     ILabel lfalse, IMov (Imm 0) firstReg, ILabel lafter])
 

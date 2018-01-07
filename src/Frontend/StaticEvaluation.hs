@@ -157,7 +157,7 @@ evalExpr (EOr pos expr1 expr2) =
     (ELitTrue _, _) -> ELitTrue pos
     (_, ELitFalse _) -> evalExpr expr1
     (ELitFalse _, _) -> evalExpr expr2
-    _ -> EAnd pos (evalExpr expr1) (evalExpr expr2)
+    _ -> EOr pos (evalExpr expr1) (evalExpr expr2)
 
 evalExpr e = e
 
