@@ -233,8 +233,11 @@ getStringLabel :: String -> Generator Label
 getStringLabel str = get >>= \store ->
   case lookup str (stringEnv store) of
     Just l -> return l
-    Nothing -> let n = stringCounter store in
-      put (store {stringCounter = n + 1}) >> return (StringLabel n)
+    Nothing -> do
+      let n = stringCounter store
+          l = StringLabel n
+      put (store {stringCounter = n + 1, stringEnv = insert str l (stringEnv store)})
+      return l
 
 newLoc :: Type () -> Generator Memory
 newLoc vartype = state (\s -> let size = localSize s in
@@ -359,7 +362,7 @@ genExpr (EApp () ident exprs) = do
 genExpr (EString () s) = do
   l <- getStringLabel s
   return (Reg EAX, [
-    IParam (Imm (fromIntegral $ length s)),
+    IParam (Imm (fromIntegral $ length s - 2)),
     IParam (Mem (MemoryGlobal l)),
     ICall (Ident "_allocString") 2])
 

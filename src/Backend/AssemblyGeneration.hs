@@ -14,7 +14,7 @@ generateFunction :: (Ident, [Instruction]) -> [String]
 generateFunction (Ident s, ins) = (".globl " ++ s) : (s ++ ":") : map show ins
 
 generateString :: (String, Label) -> [String]
-generateString (string, label) = [show label, "\t.string " ++ show string]
+generateString (string, label) = [show label ++ ":", "\t.string " ++ string]
 
 generateFile :: FilePath -> String -> IO ()
 generateFile file = writeFile (replaceExtension file "s")
