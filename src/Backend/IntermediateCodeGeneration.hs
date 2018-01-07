@@ -3,8 +3,8 @@ module Backend.IntermediateCodeGeneration where
 import Control.Monad.State
 import Control.Monad.Writer
 import Control.Monad.Reader
-
-import Data.Map (Map, empty, (!), insert)
+import Prelude hiding (lookup)
+import Data.Map (Map, empty, (!), lookup, insert)
 
 import Parser.AbsLatte
 
@@ -13,10 +13,11 @@ type Size = Integer
 
 type Pointer = Integer
 
-newtype Label = Label Integer
+data Label = Label Integer | StringLabel Integer
 
 instance Show Label where
   show (Label n) = ".L" ++ show n
+  show (StringLabel n) = ".LC" ++ show n
 
 data Register = EBP | ESP | EAX | ECX | EDX | EBX | EDI | ESI
   deriving (Eq, Ord, Enum, Bounded)
@@ -35,7 +36,7 @@ data Memory
   = MemoryArgument Integer
   | MemoryLocal Integer
   | MemoryOffset Register Integer
-  | MemoryGlobal
+  | MemoryGlobal Label
 
 instance Show Memory where
   show (MemoryArgument n) = show n ++ "(" ++ show EBP ++ ")"
@@ -139,7 +140,7 @@ data Store = Store {
   localSize :: Size,
   variableEnv :: Map Ident Memory,
   stringCounter :: Integer,
-  strings :: [String],
+  strings :: Map String Label,
   returnLabel :: Label
 }
 
@@ -164,7 +165,7 @@ emptyStore = Store {
   localSize = 0,
   variableEnv = empty,
   stringCounter = 0,
-  strings = [],
+  strings = empty,
   returnLabel = Label 0
 }
 
@@ -225,6 +226,13 @@ newLabel = state (\s -> let n = labelCounter s in (Label n, s {labelCounter = n 
 
 generr :: Show a => a -> Generator b
 generr err = error $ "Unexpected error\n" ++ show err
+
+getStringLabel :: String -> Generator Label
+getStringLabel str = get >>= \store ->
+  case lookup str (strings store) of
+    Just l -> return l
+    Nothing -> let n = stringCounter store in
+      put (store {stringCounter = n + 1}) >> return (StringLabel n)
 
 newLoc :: Type () -> Generator Memory
 newLoc vartype = state (\s -> let size = localSize s in
@@ -344,8 +352,12 @@ genExpr (EApp () ident exprs) = do
   let ins = concatMap (\(o, i) -> i ++ [IParam o]) params
   return (Reg EAX, ins ++ [ICall ident (fromIntegral $ length params)])
 
--- genExpr (EString () s) = do
---   l <- addGlobalString s
+genExpr (EString () s) = do
+  l <- getStringLabel s
+  return (Reg EAX, [
+    IParam (Imm (fromIntegral $ length s)),
+    IParam (Mem (MemoryGlobal l)),
+    ICall (Ident "_allocString") 2])
 
 genExpr (Neg () expr) = genUnOp NEG expr
 
