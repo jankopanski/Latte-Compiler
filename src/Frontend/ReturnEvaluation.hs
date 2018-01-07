@@ -26,6 +26,7 @@ returnEvalTopDef (FnDef pos ret ident args block) =
     (_, False) -> Left (ident, pos)
     _ -> Right $ FnDef pos ret ident args block'
 
+-- Bool informs whether there was a return --
 returnEvalBlock :: Block Position -> (Block Position, Bool)
 returnEvalBlock (Block pos stmts) =
   let (stmts', wasReturn) = takeWhileEvalStmt stmts [] in

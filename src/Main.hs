@@ -11,6 +11,7 @@ import Frontend.Globals (putError)
 import Frontend.TypeControl (runTypeControl)
 import Frontend.StaticEvaluation (runStaticEvaluation)
 import Frontend.ReturnEvaluation (runReturnEvaluation)
+import Frontend.StringEvaluation (runStringEvaluation)
 import Backend.IntermediateCodeGeneration (runIntermediateCodeGeneration)
 import Backend.AssemblyGeneration (generateAssembly, generateFile)
 
@@ -47,24 +48,35 @@ run v f =
   readFile f >>= \s ->
   let lexemes = myLexer s in
   case pProgram lexemes of
+
     Bad err -> do
       putStrV v "Tokens:"
       putStrV v $ show lexemes
       putError err
+
     Ok tree -> do
       putStrV v "Parse completed"
       showTree v tree
+
       runTypeControl tree
-      putStrV v "Type check completed\n"
-      optTree <- runStaticEvaluation tree
+      putStrV v "Type control completed\n"
+
+      tree <- runStaticEvaluation tree
       putStrV v "Static evaluation completed"
-      showTree v optTree
-      retOptTree <- runReturnEvaluation optTree
+      showTree v tree
+
+      tree <- runReturnEvaluation tree
       putStrV v "Return optimisation completed"
-      showTree v retOptTree
-      code <- runIntermediateCodeGeneration (void retOptTree)
+      showTree v tree
+
+      tree <- runStringEvaluation tree
+      putStrV v "String evaluation completed"
+      showTree v tree
+
+      code <- runIntermediateCodeGeneration (void tree)
       asm <- generateAssembly code
       putStrV v asm
+      
       generateFile f asm
       putStrLn "OK"
       exitSuccess

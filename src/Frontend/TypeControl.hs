@@ -2,16 +2,14 @@ module Frontend.TypeControl where -- abstract syntax tree checker
 
 -- Imports --
 
-import qualified Data.Map as Map
-import Data.Maybe (isNothing, fromJust)
-import System.Exit (exitFailure)
-
 import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State
+import qualified Data.Map as Map
+import Data.Maybe (isNothing, fromJust)
 
-import Frontend.Globals
 import Parser.AbsLatte
+import Frontend.Globals
 
 -- Data structures --
 
@@ -66,27 +64,6 @@ type StatementChecker a = ReaderT (Type Position) (ExceptT Error (State TypeScop
 type ExpressionChecker = StatementChecker (Type Position)
 
 -- Helper functions --
-
-inbuildFunctions :: [TopDef Position]
-inbuildFunctions =
-  [
-  FnDef Nothing (Void Nothing) (Ident "printInt")
-    [Arg Nothing (Int Nothing) (Ident "")] (Block Nothing []),
-  FnDef Nothing (Void Nothing) (Ident "printString")
-    [Arg Nothing (Str Nothing) (Ident "")] (Block Nothing []),
-  FnDef Nothing (Void Nothing) (Ident "error") [] (Block Nothing []),
-  FnDef Nothing (Int Nothing) (Ident "readInt") [] (Block Nothing []),
-  FnDef Nothing (Str Nothing) (Ident "readString") [] (Block Nothing [])
-  -- FnDef Nothing (Str Nothing) (Ident "_allocString")
-  --   [Arg Nothing (Void Nothing) (Ident ""), Arg Nothing (Int Nothing) (Ident "")]
-  --   (Block Nothing []),
-  -- FnDef Nothing (Str Nothing) (Ident "_concatString")
-  --   [Arg Nothing (Str Nothing) (Ident ""), Arg Nothing (Str Nothing) (Ident "")]
-  --   (Block Nothing []),
-  -- FnDef Nothing (Bool Nothing) (Ident "_cmpString")
-  --   [Arg Nothing (Str Nothing) (Ident ""), Arg Nothing (Str Nothing) (Ident "")]
-  --   (Block Nothing [])
-  ]
 
 getPositionFromType :: Type Position -> Position
 getPositionFromType (Int pos)     = pos
