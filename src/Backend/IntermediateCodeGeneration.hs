@@ -471,7 +471,7 @@ genCond (EOr () expr1 expr2) ltrue lfalse = do
   i2 <- genCond expr2 ltrue lfalse
   return (i1 ++ [ILabel lmid] ++ i2)
 
-genCond _ _ _ = generr ()
+genCond expr ltrue lfalse = generr (expr, ltrue, lfalse)
 
 mapRelOp :: RelOp () -> RelationOperator
 mapRelOp (LTH ()) = RLT
