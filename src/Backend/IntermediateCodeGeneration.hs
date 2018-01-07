@@ -77,9 +77,9 @@ instance Show RelationOperator where
 data UnaryOperator = NEG | INC | DEC deriving Eq
 
 instance Show UnaryOperator where
-  show NEG = "neg"
-  show INC = "inc"
-  show DEC = "dec"
+  show NEG = "negl"
+  show INC = "incl"
+  show DEC = "decl"
 
 data Instruction
   = IMov Operand Register

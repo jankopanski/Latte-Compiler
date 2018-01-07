@@ -6,7 +6,7 @@ do
 	../latc $f
 	inf="./${f%.*}.input"
 	if [ -f $inf ]; then
-		DIFF=$( "./${f%.*}" < $input | diff "${f%.*}.output" -)
+		DIFF=$( "./${f%.*}" < $inf | diff "${f%.*}.output" -)
 	else
 		DIFF=$( "./${f%.*}" | diff "${f%.*}.output" -)
 	fi
