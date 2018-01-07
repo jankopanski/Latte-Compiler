@@ -4,7 +4,7 @@ import Control.Monad.State
 import Control.Monad.Writer
 import Control.Monad.Reader
 import Prelude hiding (lookup)
-import Data.Map (Map, empty, (!), lookup, insert)
+import Data.Map (Map, empty, (!), lookup, insert, assocs)
 
 import Parser.AbsLatte
 
@@ -43,6 +43,7 @@ instance Show Memory where
   show (MemoryLocal n) = "-" ++ show n ++ "(" ++ show EBP ++ ")"
   show (MemoryOffset r n) = "-" ++ show n ++ "(" ++ show EBP ++ ", " ++
                             show r ++ ", " ++ show wordLen ++ ")"
+  show (MemoryGlobal l) = "$" ++ show l
 
 data Operand
   = Reg Register
@@ -132,7 +133,7 @@ showDouble :: (Show a, Show b) => String -> a -> b -> String
 showDouble ins arg1 arg2 = "\t" ++ ins ++ " " ++ show arg1 ++ ", " ++ show arg2
 
 data Environment = Environment {
-  labels :: Maybe (Label, Label)
+  labels :: Maybe (Label, Label) -- TODO unused
 }
 
 data Store = Store {
@@ -140,12 +141,13 @@ data Store = Store {
   localSize :: Size,
   variableEnv :: Map Ident Memory,
   stringCounter :: Integer,
-  strings :: Map String Label,
+  stringEnv :: Map String Label,
   returnLabel :: Label
 }
 
 data ImmediateCode = ImmediateCode {
-  functions :: [(Ident, [Instruction])]
+  functions :: [(Ident, [Instruction])],
+  strings :: [(String, Label)]
 }
 
 type TopGeneratorT = StateT Store IO
@@ -165,7 +167,7 @@ emptyStore = Store {
   localSize = 0,
   variableEnv = empty,
   stringCounter = 0,
-  strings = empty,
+  stringEnv = empty,
   returnLabel = Label 0
 }
 
@@ -229,7 +231,7 @@ generr err = error $ "Unexpected error\n" ++ show err
 
 getStringLabel :: String -> Generator Label
 getStringLabel str = get >>= \store ->
-  case lookup str (strings store) of
+  case lookup str (stringEnv store) of
     Just l -> return l
     Nothing -> let n = stringCounter store in
       put (store {stringCounter = n + 1}) >> return (StringLabel n)
@@ -248,7 +250,9 @@ runIntermediateCodeGeneration program = evalStateT (genProgram program) emptySto
 genProgram :: Program () -> TopGenerator ImmediateCode
 genProgram (Program () topdefs) = do
   fs <- mapM genTopDef topdefs
-  return (ImmediateCode fs)
+  store <- get
+  let strs = assocs (stringEnv store)
+  return (ImmediateCode fs strs)
 
 genTopDef :: TopDef () -> TopGenerator (Ident, [Instruction])
 genTopDef (FnDef () _ ident args block) = do
