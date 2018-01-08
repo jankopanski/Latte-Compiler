@@ -9,10 +9,10 @@ import Data.Map (Map, empty, (!), lookup, insert, assocs)
 import Parser.AbsLatte
 import Backend.IntermediateCode
 
-type Pointer = Integer
+-- Data structures --
 
-data Environment = Environment {
-  labels :: Maybe (Label, Label) -- TODO unused
+newtype Environment = Environment {
+  returnLabel :: Label
 }
 
 data Store = Store {
@@ -20,8 +20,7 @@ data Store = Store {
   localSize :: Size,
   variableEnv :: Map Ident Memory,
   stringCounter :: Integer,
-  stringEnv :: Map String Label,
-  returnLabel :: Label
+  stringEnv :: Map String Label
 }
 
 type TopGeneratorT = StateT Store IO
@@ -30,10 +29,7 @@ type Generator a =  ReaderT Environment (WriterT [Instruction] TopGeneratorT) a
 type StatementGenerator = Generator ()
 type ExpressionGenerator = Generator (Operand, [Instruction])
 
-emptyEnvironment :: Environment
-emptyEnvironment = Environment {
-  labels = Nothing
-}
+-- Helper functions --
 
 emptyStore :: Store
 emptyStore = Store {
@@ -41,8 +37,7 @@ emptyStore = Store {
   localSize = 0,
   variableEnv = empty,
   stringCounter = 0,
-  stringEnv = empty,
-  returnLabel = Label 0
+  stringEnv = empty
 }
 
 firstReg :: Register
@@ -60,9 +55,6 @@ nextReg = succ
 toReg :: Operand -> Register
 toReg (Reg r) = r
 toReg _ = EAX
-
--- prevReg :: Register -> Register
--- prevReg = pred
 
 isCommutative :: BinaryOperator -> Bool
 isCommutative ADD = True
@@ -124,6 +116,7 @@ newLoc vartype = state (\s -> let size = localSize s in
 getLoc :: Ident -> Generator Memory
 getLoc ident = get >>= \s -> return $ variableEnv s ! ident
 
+-- Top functions --
 
 runIntermediateCodeGeneration :: Program () -> IO Code
 runIntermediateCodeGeneration program = evalStateT (genProgram program) emptyStore
@@ -140,8 +133,8 @@ genTopDef (FnDef () _ ident args block) = do
   let env = getArgEnv args
   l <- newLabel
   s1 <- get
-  put (s1 {localSize = 0, variableEnv = env, returnLabel = l})
-  ins <- execWriterT (runReaderT (genBlock block) emptyEnvironment)
+  put (s1 {localSize = 0, variableEnv = env})
+  ins <- execWriterT (runReaderT (genBlock block) (Environment l))
   s2 <- get
   let callieSave = usedCallieSave ins
       fullIns = prolog (localSize s2) callieSave ++ ins ++ epilog l callieSave
@@ -153,6 +146,8 @@ genBlock (Block () stmts) = do
   mapM_ genStmt stmts
   s2 <- get
   put (s2 {variableEnv = variableEnv s1}) -- TODO dodać przywracanie localSize, maxLoaclSize
+
+-- Statements --
 
 genStmt :: Stmt () -> StatementGenerator
 
@@ -187,10 +182,10 @@ genStmt (Decr () ident) = getLoc ident >>= \m -> tell [IUnOp DEC (Mem m)]
 
 genStmt (Ret () expr) = do
   (o, i) <- genExpr expr
-  s <- get
-  tell $ i ++ [IMov o EAX, IJump (returnLabel s)]
+  env <- ask
+  tell $ i ++ [IMov o EAX, IJump (returnLabel env)]
 
-genStmt (VRet ()) = get >>= \s -> tell [IJump (returnLabel s)]
+genStmt (VRet ()) = ask >>= \env -> tell [IJump (returnLabel env)]
 
 genStmt (Cond () expr stmt) = do
   lthen <- lift $ lift newLabel
@@ -222,6 +217,8 @@ genStmt (While () expr stmt) = do
 
 genStmt (SExp () expr) = genExpr expr >>= \(_, i) -> tell i
 
+-- Expressions --
+
 genExpr :: Expr () -> ExpressionGenerator
 
 genExpr (EVar () ident) = getLoc ident >>= \m -> return (Mem m, [])
@@ -234,15 +231,9 @@ genExpr (ELitFalse ()) = return (Imm 0, [])
 
 genExpr (EApp () ident exprs) = do
   params <- mapM genExpr exprs
-  -- let ins = concatMap (\(o, i) -> i ++ [IParam o]) params
   let ins = foldl (\ins' (o, i) -> i ++ [IParam o] ++ ins') [] params
   let reg = if null params then EAX else maximum $ map (toReg . fst) params
   return (Reg reg, ins ++ [ICall ident (fromIntegral $ length params), IMov (Reg EAX) reg])
-
-  -- return (Reg EAX, ins ++ [ICall ident (fromIntegral $ length params)])
-  -- return (Reg EAX, [IPush EDX, IPush ECX] ++ ins ++
-  --   [ICall ident (fromIntegral $ length params)] ++ [IPop ECX, IPop EDX])
-
 
 genExpr (EString () s) = do
   l <- getStringLabel s
@@ -313,34 +304,7 @@ genDivOp oper expr1 expr2 = do
   let reg = max (toReg o1) (toReg o2)
       i3 = i1 ++ [IParam o1] ++ i2 ++ [IMov o2 ECX, IPop EAX, IBinOp oper EAX (Reg ECX)]
           ++ [IMov (Reg (if oper == DIV then EAX else EDX)) reg]
-  -- let i3 = [IPush EDX, IPush ECX] ++ i1 ++ [IParam o1] ++ i2 ++
-  --       [IMov o2 ECX, IPop EAX, IBinOp oper EAX (Reg ECX)] ++
-  --       [IMov (Reg EDX) EAX | oper == MOD] ++ [IPop ECX, IPop EDX]
   return (Reg reg, i3)
-  -- push edx ecx
-  -- IBinOp EAX (Reg ECX)
-  -- pop
-  -- case (o1, o2) of
-  --   (Reg r1, Reg r2) -> case compare r1 r2 of
-  --     GT -> i1 ++ i2 ++ [IMov o1 EAX, IMov o2 ECX]
-  --     LT -> i2 ++ i1 ++ [IMov o1 EAX, IMov o2 ECX]
-
--- genDivOp :: BinaryOperator -> Expr () -> Expr () -> ExpressionGenerator
--- genDivOp oper expr1 expr2 = do
---   (o1, i1) <- genExpr expr1
---   (o2, i2) <- genExpr expr2
---     case (o1, o2) of
---       (Imm _, Imm _) -> generr (oper, expr1, expr2)
---       (Mem m1, Imm _) ->
---         return (Reg EAX, [IPush EDX, IPush ECX, ILoad m1 EAX, IMov o2 ECX, IBinOp oper EAX (Reg ECX), IPop ECX, IPop EDX])
---       (Imm _, Mem m2) ->
---         return (Reg EAX, [IPush EDX, IMov o1 EAX, IBinOp oper EAX o2, IPop EDX])
---       (Mem m1, Mem _) ->
---         return (Reg EAX, [IPush EDX, ILoad m1 EAX, IBinOp oper EAX o2, IPop EDX])
---       (Reg r1, Imm _) ->
---         return (Reg r1, [IPush EDX, IPush ECX, IMov o1 EAX, IMov o2 ECX, IBinOp oper EAX (Reg ECX), IPop ECX, IPop EDX, IMov EAX o1])
---       (Imm _, Reg r2) ->
---         return (Reg r2, [IPush EDX, IPush ECX, IMov o1 EAX, IBinOp oper EAX o2])
 
 genUnOp :: UnaryOperator -> Expr () -> ExpressionGenerator
 genUnOp oper expr = do
@@ -350,59 +314,7 @@ genUnOp oper expr = do
     Mem m -> return (Reg firstReg, i ++ [ILoad m firstReg, IUnOp oper (Reg firstReg)])
     Reg _ -> return (o, i ++ [IUnOp oper o])
 
-genRelOp :: RelationOperator -> Expr () -> Expr () ->
-            Label -> Label -> Generator [Instruction]
-genRelOp oper expr1 expr2 ltrue lfalse = do
-  (o1, i1) <- genExpr expr1
-  (o2, i2) <- genExpr expr2
-  case (o1, o2) of
-    (Imm _, Imm _) -> generr (oper, expr1, expr2, ltrue, lfalse)
-    (Imm _, Mem m2) ->
-      return [ILoad m2 firstReg, IJumpCond (revRelOp oper) firstReg o1 ltrue, IJump lfalse]
-    (Mem m1, Imm _) ->
-      return [ILoad m1 firstReg, IJumpCond oper firstReg o2 ltrue, IJump lfalse]
-    (Mem m1, Mem _) ->
-      return [ILoad m1 firstReg, IJumpCond oper firstReg o2 ltrue, IJump lfalse]
-    (Reg r1, Imm _) ->
-      return (i1 ++ [IJumpCond oper r1 o2 ltrue, IJump lfalse])
-    (Imm _, Reg r2) ->
-      return (i2 ++ [IJumpCond (revRelOp oper) r2 o1 ltrue, IJump lfalse])
-    (Reg r1, Mem _) ->
-      return (i1 ++ [IJumpCond oper r1 o2 ltrue, IJump lfalse])
-    (Mem _, Reg r2) ->
-      return (i2 ++ [IJumpCond (revRelOp oper) r2 o1 ltrue, IJump lfalse])
-    (Reg r1, Reg r2) -> case compare r1 r2 of -- TODO do something
-      GT -> return (i1 ++ i2 ++ [IJumpCond oper r1 o2 ltrue, IJump lfalse])
-      LT -> return (i2 ++ i1 ++ [IJumpCond (revRelOp oper) r2 o1 ltrue, IJump lfalse])
-      EQ -> return $ case r1 of
-        EAX -> i1 ++ [IMov o1 EBX] ++ i2 ++ [IJumpCond oper EBX o2 ltrue, IJump lfalse]
-        ESI -> i2 ++ [IPush ESI] ++ i1 ++
-          [IPop EAX, IJumpCond oper ESI (Reg EAX) ltrue, IJump lfalse]
-        _ -> let r3 = nextReg r1 in i1 ++ [IMov o1 r3] ++ i2 ++
-          [IJumpCond oper r3 o2 ltrue, IJump lfalse]
-
-      -- return $ if r1 == lastReg
-      --   then let r3 = firstReg in
-      --     (i2 ++ [IPush r2] ++ i1 ++
-      --     [IPop r3, IJumpCond oper r1 (Reg r3) ltrue, IJump lfalse])
-      --   else let r3 = nextReg r1 in
-      --     (i1 ++ [IMov o1 r3] ++ i2 ++ [IJumpCond oper r3 o2 ltrue, IJump lfalse])
-      --
-      --
-      --     EAX -> (Reg EBX, i1 ++ [IMov o1 EBX] ++ i2 ++ [IBinOp oper EBX o2])
-      --     ESI -> (Reg ESI, i2 ++ [IPush ESI] ++ i1 ++ [IPop EAX, IBinOp oper ESI (Reg EAX)])
-      --     _ -> let r3 = nextReg r1 in
-      --       (Reg r3, i1 ++ [IMov o1 r3] ++ i2 ++ [IBinOp oper r3 o2])
-
-
-genCondInit :: Expr () -> ExpressionGenerator
-genCondInit expr = do
-  ltrue <- lift $ lift newLabel
-  lfalse <- lift $ lift newLabel
-  lafter <- lift $ lift newLabel
-  i <- genCond expr ltrue lfalse
-  return (Reg firstReg, i ++ [ILabel ltrue, IMov (Imm 1) firstReg, IJump lafter,
-    ILabel lfalse, IMov (Imm 0) firstReg, ILabel lafter])
+-- Jumping code --
 
 genCond :: Expr () -> Label -> Label -> Generator [Instruction]
 
@@ -434,6 +346,46 @@ genCond (EOr () expr1 expr2) ltrue lfalse = do
   return (i1 ++ [ILabel lmid] ++ i2)
 
 genCond expr ltrue lfalse = generr (expr, ltrue, lfalse)
+
+genCondInit :: Expr () -> ExpressionGenerator
+genCondInit expr = do
+  ltrue <- lift $ lift newLabel
+  lfalse <- lift $ lift newLabel
+  lafter <- lift $ lift newLabel
+  i <- genCond expr ltrue lfalse
+  return (Reg firstReg, i ++ [ILabel ltrue, IMov (Imm 1) firstReg, IJump lafter,
+    ILabel lfalse, IMov (Imm 0) firstReg, ILabel lafter])
+
+genRelOp :: RelationOperator -> Expr () -> Expr () ->
+            Label -> Label -> Generator [Instruction]
+genRelOp oper expr1 expr2 ltrue lfalse = do
+  (o1, i1) <- genExpr expr1
+  (o2, i2) <- genExpr expr2
+  case (o1, o2) of
+    (Imm _, Imm _) -> generr (oper, expr1, expr2, ltrue, lfalse)
+    (Imm _, Mem m2) ->
+      return [ILoad m2 firstReg, IJumpCond (revRelOp oper) firstReg o1 ltrue, IJump lfalse]
+    (Mem m1, Imm _) ->
+      return [ILoad m1 firstReg, IJumpCond oper firstReg o2 ltrue, IJump lfalse]
+    (Mem m1, Mem _) ->
+      return [ILoad m1 firstReg, IJumpCond oper firstReg o2 ltrue, IJump lfalse]
+    (Reg r1, Imm _) ->
+      return (i1 ++ [IJumpCond oper r1 o2 ltrue, IJump lfalse])
+    (Imm _, Reg r2) ->
+      return (i2 ++ [IJumpCond (revRelOp oper) r2 o1 ltrue, IJump lfalse])
+    (Reg r1, Mem _) ->
+      return (i1 ++ [IJumpCond oper r1 o2 ltrue, IJump lfalse])
+    (Mem _, Reg r2) ->
+      return (i2 ++ [IJumpCond (revRelOp oper) r2 o1 ltrue, IJump lfalse])
+    (Reg r1, Reg r2) -> case compare r1 r2 of -- TODO do something
+      GT -> return (i1 ++ i2 ++ [IJumpCond oper r1 o2 ltrue, IJump lfalse])
+      LT -> return (i2 ++ i1 ++ [IJumpCond (revRelOp oper) r2 o1 ltrue, IJump lfalse])
+      EQ -> return $ case r1 of
+        EAX -> i1 ++ [IMov o1 EBX] ++ i2 ++ [IJumpCond oper EBX o2 ltrue, IJump lfalse]
+        ESI -> i2 ++ [IPush ESI] ++ i1 ++
+          [IPop EAX, IJumpCond oper ESI (Reg EAX) ltrue, IJump lfalse]
+        _ -> let r3 = nextReg r1 in i1 ++ [IMov o1 r3] ++ i2 ++
+          [IJumpCond oper r3 o2 ltrue, IJump lfalse]
 
 mapRelOp :: RelOp () -> RelationOperator
 mapRelOp (LTH ()) = RLT
