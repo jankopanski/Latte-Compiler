@@ -76,7 +76,7 @@ run v f =
       code <- runIntermediateCodeGeneration (void tree)
       asm <- generateAssembly code
       putStrV v asm
-      
+
       generateFile f asm
       putStrLn "OK"
       exitSuccess

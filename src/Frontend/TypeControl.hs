@@ -28,6 +28,8 @@ data Error
   | InvalidArgumentType Name Position
   | InvalidDeclarationType Position
   | InvalidReturnType (Type Position)
+  | CustomError String
+  | CustomErrorPosition String Position
   | UnexpectedError Position
 instance Show Error where
   show (Redefinition name new old) =
@@ -56,6 +58,8 @@ instance Show Error where
   show (InvalidReturnType t) =
     showErrorPosition (getPositionFromType t) ++ "Invalid type of return, expected " ++
     show t
+  show (CustomError s) = s
+  show (CustomErrorPosition s pos) = showErrorPosition pos ++ s
   show (UnexpectedError pos) =
     showErrorPosition pos ++ "Unexpected error in type control module"
 
@@ -103,6 +107,7 @@ checkProgram :: Program Position -> Checker ()
 checkProgram (Program _ topdefs) = do
   mapM_ addFnDecl inbuildFunctions
   mapM_ addFnDecl topdefs
+  checkIsMain
   mapM_ checkTopDef topdefs
 
 addFnDecl :: TopDef Position -> Checker ()
@@ -110,8 +115,21 @@ addFnDecl (FnDef fnpos rettype (Ident name) args _) = do
   decls <- getOuther
   case Map.lookup name decls of
     Just t -> throwError (Redefinition name fnpos (getPositionFromType t))
-    Nothing -> let argtypes = map (\(Arg _ t _) -> t) args in
+    Nothing -> do
+      let argtypes = map (\(Arg _ t _) -> t) args
+      when (Void fnpos `elem` argtypes) $
+        throwError (CustomErrorPosition "Void argument" fnpos)
       putOuther $ Map.insert name (Fun fnpos rettype argtypes) decls
+
+checkIsMain :: Checker ()
+checkIsMain = do
+  decls <- getOuther
+  case Map.lookup "main" decls of
+    Nothing -> throwError (CustomError "No 'main' function")
+    Just fun -> case fun of
+      (Fun _ (Int _) []) -> return ()
+      (Fun pos _ _) ->
+        throwError (CustomErrorPosition "Invalid 'main' declaration" pos)
 
 checkTopDef :: TopDef Position -> Checker ()
 checkTopDef (FnDef _ ftype _ args block) = do
@@ -173,7 +191,8 @@ checkStmt (VRet pos) = do
 checkStmt (Ret pos expr) = do
   rtype <- ask
   etype <- checkExpr expr
-  unless (rtype == etype) $ throwError (InvalidReturnType (fmap (const pos) rtype))
+  unless (rtype == etype && rtype /= Void pos) $
+    throwError (InvalidReturnType (fmap (const pos) rtype))
 
 checkStmt (Cond pos expr stmt) = do
   exprtype <- checkExpr expr

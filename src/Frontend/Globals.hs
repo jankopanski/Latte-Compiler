@@ -19,7 +19,7 @@ inbuildFunctions =
   FnDef Nothing (Int Nothing) (Ident "readInt") [] (Block Nothing []),
   FnDef Nothing (Str Nothing) (Ident "readString") [] (Block Nothing []),
   FnDef Nothing (Str Nothing) (Ident "_allocString")
-    [Arg Nothing (Void Nothing) (Ident ""), Arg Nothing (Int Nothing) (Ident "")]
+    [Arg Nothing (Str Nothing) (Ident ""), Arg Nothing (Int Nothing) (Ident "")]
     (Block Nothing []),
   FnDef Nothing (Str Nothing) (Ident "_concatString")
     [Arg Nothing (Str Nothing) (Ident ""), Arg Nothing (Str Nothing) (Ident "")]
