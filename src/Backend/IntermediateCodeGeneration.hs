@@ -29,7 +29,7 @@ instance Show Register where
   show ECX = "%ecx"
   show EDX = "%edx"
   show EBX = "%ebx"
-  show EDI = "$edi"
+  show EDI = "%edi"
   show ESI = "%esi"
 
 data Memory
@@ -102,9 +102,9 @@ instance Show Instruction where
   show (ILoad m1 r2) = showDouble "movl" m1 r2
   show (IStore o1 m2) = showDouble "movl" o1 m2
   show (IXchg r1 r2) = showDouble "xchgl" r1 r2
-  show (IPush r) = showSingle "push" r
-  show (IPop r) = showSingle "pop" r
-  show (IParam o) = showSingle "push" o
+  show (IPush r) = showSingle "pushl" r
+  show (IPop r) = showSingle "popl" r
+  show (IParam o) = showSingle "pushl" o
   show (ICall (Ident s) n) =
     "\tcall " ++ s ++ nextins (IBinOp ADD ESP (Imm (n*wordLen)))
   show (IBinOp DIV _ o) = "\tcdq\n" ++ showSingle (show DIV) o
