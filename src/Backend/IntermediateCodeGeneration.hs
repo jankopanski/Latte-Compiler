@@ -179,11 +179,18 @@ wordLen = 4
 firstReg :: Register
 firstReg = EAX
 
+firstSaveReg :: Register
+firstSaveReg = EBX
+
 lastReg :: Register
 lastReg = maxBound
 
 nextReg :: Register -> Register
 nextReg = succ
+
+toReg :: Operand -> Register
+toReg (Reg r) = r
+toReg _ = EAX
 
 -- prevReg :: Register -> Register
 -- prevReg = pred
@@ -218,7 +225,7 @@ prolog size reg = [IPush EBP, IMov (Reg ESP) EBP, IBinOp SUB ESP (Imm size)] ++
     _ -> []
 
 epilog :: Label -> Register -> [Instruction]
-epilog lab reg = pops ++ [ILabel lab, IMov (Reg EBP) ESP, IPop EBP, IRet] where
+epilog lab reg = [ILabel lab] ++ pops ++ [IMov (Reg EBP) ESP, IPop EBP, IRet] where
   pops = case reg of
     EBX -> [IPop EBX]
     EDI -> [IPop EDI, IPop EBX]
@@ -360,9 +367,12 @@ genExpr (EApp () ident exprs) = do
   params <- mapM genExpr exprs
   -- let ins = concatMap (\(o, i) -> i ++ [IParam o]) params
   let ins = foldl (\ins' (o, i) -> i ++ [IParam o] ++ ins') [] params
-  return (Reg EAX, ins ++ [ICall ident (fromIntegral $ length params)])
+  let reg = if null params then EAX else maximum $ map (toReg . fst) params
+  return (Reg reg, ins ++ [ICall ident (fromIntegral $ length params), IMov (Reg EAX) reg])
+
+  -- return (Reg EAX, ins ++ [ICall ident (fromIntegral $ length params)])
   -- return (Reg EAX, [IPush EDX, IPush ECX] ++ ins ++
-  -- [ICall ident (fromIntegral $ length params)] ++ [IPop ECX, IPop EDX])
+  --   [ICall ident (fromIntegral $ length params)] ++ [IPop ECX, IPop EDX])
 
 
 genExpr (EString () s) = do
@@ -411,34 +421,33 @@ genBinOp oper expr1 expr2 = do
     (Imm _, Reg r2) -> return $
       if isCommutative oper
         then (o2, i2 ++ [IBinOp oper r2 o1])
-      else if r2 == firstReg
-        then let r3 = nextReg r2 in (Reg r3, i2 ++ [IMov o1 r3, IBinOp oper r3 o2])
-      else (o2, i2 ++ [IMov o1 firstReg, IBinOp oper firstReg o2, IXchg firstReg r2])
+        else (o2, i2 ++ [IMov o1 ECX, IBinOp oper ECX o2, IXchg ECX r2])
     (Reg r1, Mem _) ->
       return (Reg r1, i1 ++ [IBinOp oper r1 o2])
     (Mem m1, Reg r2) -> return $
       if isCommutative oper
         then (o2, i2 ++ [IBinOp oper r2 o1])
-      else if r2 == firstReg
-        then let r3 = nextReg r2 in (Reg r3, i2 ++ [ILoad m1 r3, IBinOp oper r3 o2])
-      else (o2, i2 ++ [ILoad m1 firstReg, IBinOp oper firstReg o2, IXchg firstReg r2])
-    (Reg r1, Reg r2) -> case compare r1 r2 of
-      GT -> return (Reg r1, i1 ++ i2 ++ [IBinOp oper r1 o2])
-      LT -> return (Reg r2, i2 ++ i1 ++ [IXchg r1 r2, IBinOp oper r1 o2])
-      EQ -> return $ if r1 == lastReg
-        then let r3 = firstReg in
-          (o1, i2 ++ [IPush r2] ++ i1 ++ [IPop r3, IBinOp oper r1 (Reg r3)])
-        else let r3 = nextReg r1 in
+        else (o2, i2 ++ [ILoad m1 ECX, IBinOp oper ECX o2, IXchg ECX r2])
+    (Reg r1, Reg r2) -> case compare r1 r2 of -- TODO całe + (EAX, EAX)
+      GT -> return (o1, i1 ++ i2 ++ [IBinOp oper r1 o2])
+      LT -> return (o2, i2 ++ i1 ++ [IXchg r1 r2, IBinOp oper r1 o2])
+      EQ -> return $ case r1 of
+        EAX -> (Reg EBX, i1 ++ [IMov o1 EBX] ++ i2 ++ [IBinOp oper EBX o2])
+        ESI -> (Reg ESI, i2 ++ [IPush ESI] ++ i1 ++ [IPop EAX, IBinOp oper ESI (Reg EAX)])
+        _ -> let r3 = nextReg r1 in
           (Reg r3, i1 ++ [IMov o1 r3] ++ i2 ++ [IBinOp oper r3 o2])
 
 genDivOp :: BinaryOperator -> Expr () -> Expr () -> ExpressionGenerator
 genDivOp oper expr1 expr2 = do
   (o1, i1) <- genExpr expr1
   (o2, i2) <- genExpr expr2
-  let i3 = [IPush EDX, IPush ECX] ++ i1 ++ [IParam o1] ++ i2 ++
-        [IMov o2 ECX, IPop EAX, IBinOp oper EAX (Reg ECX)] ++
-        [IMov (Reg EDX) EAX | oper == MOD] ++ [IPop ECX, IPop EDX]
-  return (Reg EAX, i3)
+  let reg = max (toReg o1) (toReg o2)
+      i3 = i1 ++ [IParam o1] ++ i2 ++ [IMov o2 ECX, IPop EAX, IBinOp oper EAX (Reg ECX)]
+          ++ [IMov (Reg (if oper == DIV then EAX else EDX)) reg]
+  -- let i3 = [IPush EDX, IPush ECX] ++ i1 ++ [IParam o1] ++ i2 ++
+  --       [IMov o2 ECX, IPop EAX, IBinOp oper EAX (Reg ECX)] ++
+  --       [IMov (Reg EDX) EAX | oper == MOD] ++ [IPop ECX, IPop EDX]
+  return (Reg reg, i3)
   -- push edx ecx
   -- IBinOp EAX (Reg ECX)
   -- pop
@@ -493,15 +502,29 @@ genRelOp oper expr1 expr2 ltrue lfalse = do
       return (i1 ++ [IJumpCond oper r1 o2 ltrue, IJump lfalse])
     (Mem _, Reg r2) ->
       return (i2 ++ [IJumpCond (revRelOp oper) r2 o1 ltrue, IJump lfalse])
-    (Reg r1, Reg r2) -> case compare r1 r2 of
+    (Reg r1, Reg r2) -> case compare r1 r2 of -- TODO do something
       GT -> return (i1 ++ i2 ++ [IJumpCond oper r1 o2 ltrue, IJump lfalse])
       LT -> return (i2 ++ i1 ++ [IJumpCond (revRelOp oper) r2 o1 ltrue, IJump lfalse])
-      EQ -> return $ if r1 == lastReg
-        then let r3 = firstReg in
-          (i2 ++ [IPush r2] ++ i1 ++
-          [IPop r3, IJumpCond oper r1 (Reg r3) ltrue, IJump lfalse])
-        else let r3 = nextReg r1 in
-          (i1 ++ [IMov o1 r3] ++ i2 ++ [IJumpCond oper r3 o2 ltrue, IJump lfalse])
+      EQ -> return $ case r1 of
+        EAX -> i1 ++ [IMov o1 EBX] ++ i2 ++ [IJumpCond oper EBX o2 ltrue, IJump lfalse]
+        ESI -> i2 ++ [IPush ESI] ++ i1 ++
+          [IPop EAX, IJumpCond oper ESI (Reg EAX) ltrue, IJump lfalse]
+        _ -> let r3 = nextReg r1 in i1 ++ [IMov o1 r3] ++ i2 ++
+          [IJumpCond oper r3 o2 ltrue, IJump lfalse]
+
+      -- return $ if r1 == lastReg
+      --   then let r3 = firstReg in
+      --     (i2 ++ [IPush r2] ++ i1 ++
+      --     [IPop r3, IJumpCond oper r1 (Reg r3) ltrue, IJump lfalse])
+      --   else let r3 = nextReg r1 in
+      --     (i1 ++ [IMov o1 r3] ++ i2 ++ [IJumpCond oper r3 o2 ltrue, IJump lfalse])
+      --
+      --
+      --     EAX -> (Reg EBX, i1 ++ [IMov o1 EBX] ++ i2 ++ [IBinOp oper EBX o2])
+      --     ESI -> (Reg ESI, i2 ++ [IPush ESI] ++ i1 ++ [IPop EAX, IBinOp oper ESI (Reg EAX)])
+      --     _ -> let r3 = nextReg r1 in
+      --       (Reg r3, i1 ++ [IMov o1 r3] ++ i2 ++ [IBinOp oper r3 o2])
+
 
 genCondInit :: Expr () -> ExpressionGenerator
 genCondInit expr = do
