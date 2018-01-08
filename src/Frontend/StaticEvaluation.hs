@@ -110,7 +110,7 @@ evalExpr (EMul pos expr1 op@(Div _) expr2) =
 evalExpr (EMul pos expr1 op@(Mod _) expr2) =
   case (evalExpr expr1, evalExpr expr2) of
     (ELitInt _ _, ELitInt _ 0) -> EMul pos (evalExpr expr1) op (evalExpr expr2)
-    (ELitInt _ n1, ELitInt _ n2) -> ELitInt pos (n1 `mod` n2)
+    (ELitInt _ n1, ELitInt _ n2) -> ELitInt pos (n1 `rem` n2)
     _ -> EMul pos (evalExpr expr1) op (evalExpr expr2)
 
 evalExpr (ERel pos expr1 op@(EQU _) expr2) =
