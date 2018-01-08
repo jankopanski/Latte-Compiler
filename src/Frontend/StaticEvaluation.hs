@@ -1,4 +1,4 @@
-module Frontend.StaticEvaluation where -- TODO rename static evaluation
+module Frontend.StaticEvaluation where
 
 -- Imports --
 
@@ -100,7 +100,6 @@ evalExpr (EMul pos expr1 op@(Times _) expr2) =
     (ELitInt _ n1, ELitInt _ n2) -> ELitInt pos (n1 * n2)
     _ -> EMul pos (evalExpr expr1) op (evalExpr expr2)
 
--- TODO zero must invoke error
 evalExpr (EMul pos expr1 op@(Div _) expr2) =
   case (evalExpr expr1, evalExpr expr2) of
     (ELitInt _ _, ELitInt _ 0) -> EMul pos (evalExpr expr1) op (evalExpr expr2)
