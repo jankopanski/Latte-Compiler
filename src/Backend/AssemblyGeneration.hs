@@ -3,9 +3,9 @@ module Backend.AssemblyGeneration where
 import System.FilePath (replaceExtension)
 
 import Parser.AbsLatte
-import Backend.IntermediateCodeGeneration
+import Backend.IntermediateCode
 
-generateAssembly :: ImmediateCode -> IO String
+generateAssembly :: Code -> IO String
 generateAssembly code = return $ unlines $
   concatMap generateString (strings code) ++
   concatMap generateFunction (functions code)
