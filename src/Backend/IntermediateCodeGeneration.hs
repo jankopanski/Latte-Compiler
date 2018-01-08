@@ -361,6 +361,9 @@ genExpr (EApp () ident exprs) = do
   -- let ins = concatMap (\(o, i) -> i ++ [IParam o]) params
   let ins = foldl (\ins' (o, i) -> i ++ [IParam o] ++ ins') [] params
   return (Reg EAX, ins ++ [ICall ident (fromIntegral $ length params)])
+  -- return (Reg EAX, [IPush EDX, IPush ECX] ++ ins ++
+  -- [ICall ident (fromIntegral $ length params)] ++ [IPop ECX, IPop EDX])
+
 
 genExpr (EString () s) = do
   l <- getStringLabel s
