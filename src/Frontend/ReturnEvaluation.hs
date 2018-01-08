@@ -53,9 +53,11 @@ returnEvalStmt (Cond pos expr stmt) =
 returnEvalStmt (CondElse pos expr stmt1 stmt2) =
   let (stmt1', b1) = returnEvalStmt stmt1 in
   let (stmt2', b2) = returnEvalStmt stmt2 in
-  if b1 && b2
-    then (CondElse pos expr stmt1' stmt2', True)
-    else (CondElse pos expr stmt1' stmt2', False)
+  (CondElse pos expr stmt1' stmt2', b1 && b2)
+
+returnEvalStmt (While pos expr@ELitTrue{} stmt) =
+  let (stmt', b) = returnEvalStmt stmt in
+  (While pos expr stmt', b)
 
 returnEvalStmt (While pos expr stmt) =
   let (stmt', _) = returnEvalStmt stmt in
