@@ -540,6 +540,10 @@ genCond :: Expr () -> Label -> Label -> Generator [Instruction]
 genCond expr@EVar{} ltrue lfalse =
   genRelOp REQ expr (ELitTrue ()) ltrue lfalse
 
+genCond ELitTrue{} ltrue _ = return [IJump ltrue]
+
+genCond ELitFalse{} _ lfalse = return [IJump lfalse]
+
 genCond expr@EApp{} ltrue lfalse =
   genRelOp REQ expr (ELitTrue ()) ltrue lfalse
 

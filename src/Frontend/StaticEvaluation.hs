@@ -145,7 +145,6 @@ evalExpr (ERel pos expr1 op expr2) =
 
 evalExpr (EAnd pos expr1 expr2) =
   case (evalExpr expr1, evalExpr expr2) of
-    (_, ELitFalse _) -> ELitFalse pos
     (ELitFalse _, _) -> ELitFalse pos
     (_, ELitTrue _) -> evalExpr expr1
     (ELitTrue _, _) -> evalExpr expr2
@@ -153,7 +152,6 @@ evalExpr (EAnd pos expr1 expr2) =
 
 evalExpr (EOr pos expr1 expr2) =
   case (evalExpr expr1, evalExpr expr2) of
-    (_, ELitTrue _) -> ELitTrue pos
     (ELitTrue _, _) -> ELitTrue pos
     (_, ELitFalse _) -> evalExpr expr1
     (ELitFalse _, _) -> evalExpr expr2
