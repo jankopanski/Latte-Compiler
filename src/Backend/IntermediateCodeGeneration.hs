@@ -18,6 +18,7 @@ newtype Environment = Environment {
 data Store = Store {
   labelCounter :: Integer,
   localSize :: Size,
+  maxLocalSize :: Size,
   variableEnv :: Map Ident Memory,
   stringCounter :: Integer,
   stringEnv :: Map String Label
@@ -35,6 +36,7 @@ emptyStore :: Store
 emptyStore = Store {
   labelCounter = 0,
   localSize = 0,
+  maxLocalSize = 0,
   variableEnv = empty,
   stringCounter = 0,
   stringEnv = empty
@@ -137,7 +139,7 @@ genTopDef (FnDef () _ ident args block) = do
   ins <- execWriterT (runReaderT (genBlock block) (Environment l))
   s2 <- get
   let callieSave = usedCallieSave ins
-      fullIns = prolog (localSize s2) callieSave ++ ins ++ epilog l callieSave
+      fullIns = prolog (maxLocalSize s2) callieSave ++ ins ++ epilog l callieSave
   return (ident, fullIns)
 
 genBlock :: Block () -> StatementGenerator
@@ -145,7 +147,9 @@ genBlock (Block () stmts) = do
   s1 <- get
   mapM_ genStmt stmts
   s2 <- get
-  put (s2 {variableEnv = variableEnv s1}) -- TODO dodać przywracanie localSize, maxLoaclSize
+  put (s2 { localSize = localSize s1,
+            maxLocalSize = max (maxLocalSize s2) (localSize s2),
+            variableEnv = variableEnv s1 })
 
 -- Statements --
 
