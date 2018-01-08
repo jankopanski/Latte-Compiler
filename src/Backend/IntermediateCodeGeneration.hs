@@ -107,14 +107,16 @@ instance Show Instruction where
   show (IParam o) = showSingle "push" o
   show (ICall (Ident s) n) =
     "\tcall " ++ s ++ nextins (IBinOp ADD ESP (Imm (n*wordLen)))
-  show (IBinOp DIV r1 o2) = -- TODO poprawić dzielenie
-    show (IPush EDX) ++ nextins (IPush EAX) ++ nextins (IMov (Reg r1) EAX)
-    ++ "\n\tcdq\n" ++ showSingle (show DIV) o2 ++ nextins (IMov (Reg EAX) r1)
-    ++ nextins (IPop EAX) ++ nextins (IPop EDX)
-  show (IBinOp MOD r1 o2) =
-    show (IPush EDX) ++ nextins (IPush EAX) ++ nextins (IMov (Reg r1) EAX)
-    ++ "\n\tcdq\n" ++ showSingle (show MOD) o2 ++ nextins (IMov (Reg EDX) r1)
-    ++ nextins (IPop EAX) ++ nextins (IPop EDX)
+  show (IBinOp DIV _ o) = "\tcdq\n" ++ showSingle (show DIV) o
+  show (IBinOp MOD _ o) = "\tcdq\n" ++ showSingle (show MOD) o
+  -- show (IBinOp DIV r1 o2) = -- TODO poprawić dzielenie
+  --   show (IPush EDX) ++ nextins (IPush EAX) ++ nextins (IMov (Reg r1) EAX)
+  --   ++ "\n\tcdq\n" ++ showSingle (show DIV) o2 ++ nextins (IMov (Reg EAX) r1)
+  --   ++ nextins (IPop EAX) ++ nextins (IPop EDX)
+  -- show (IBinOp MOD r1 o2) =
+  --   show (IPush EDX) ++ nextins (IPush EAX) ++ nextins (IMov (Reg r1) EAX)
+  --   ++ "\n\tcdq\n" ++ showSingle (show MOD) o2 ++ nextins (IMov (Reg EDX) r1)
+  --   ++ nextins (IPop EAX) ++ nextins (IPop EDX)
   show (IBinOp op r1 o2) = showDouble (show op) o2 r1
   show (IUnOp op o) = showSingle (show op) o
   show (IJump l) = showSingle "jmp" l
@@ -377,9 +379,9 @@ genExpr (EAdd () expr1 (Minus ()) expr2) = genBinOp SUB expr1 expr2
 
 genExpr (EMul () expr1 (Times ()) expr2) = genBinOp MUL expr1 expr2
 
-genExpr (EMul () expr1 (Div ()) expr2) = genBinOp DIV expr1 expr2
+genExpr (EMul () expr1 (Div ()) expr2) = genDivOp DIV expr1 expr2
 
-genExpr (EMul () expr1 (Mod ()) expr2) = genBinOp MOD expr1 expr2
+genExpr (EMul () expr1 (Mod ()) expr2) = genDivOp MOD expr1 expr2
 
 genExpr expr@ERel{} = genCondInit expr
 
@@ -425,6 +427,39 @@ genBinOp oper expr1 expr2 = do
           (o1, i2 ++ [IPush r2] ++ i1 ++ [IPop r3, IBinOp oper r1 (Reg r3)])
         else let r3 = nextReg r1 in
           (Reg r3, i1 ++ [IMov o1 r3] ++ i2 ++ [IBinOp oper r3 o2])
+
+genDivOp :: BinaryOperator -> Expr () -> Expr () -> ExpressionGenerator
+genDivOp oper expr1 expr2 = do
+  (o1, i1) <- genExpr expr1
+  (o2, i2) <- genExpr expr2
+  let i3 = [IPush EDX, IPush ECX] ++ i1 ++ [IParam o1] ++ i2 ++
+        [IMov o2 ECX, IPop EAX, IBinOp oper EAX (Reg ECX)] ++
+        [IMov (Reg EDX) EAX | oper == MOD] ++ [IPop ECX, IPop EDX]
+  return (Reg EAX, i3)
+  -- push edx ecx
+  -- IBinOp EAX (Reg ECX)
+  -- pop
+  -- case (o1, o2) of
+  --   (Reg r1, Reg r2) -> case compare r1 r2 of
+  --     GT -> i1 ++ i2 ++ [IMov o1 EAX, IMov o2 ECX]
+  --     LT -> i2 ++ i1 ++ [IMov o1 EAX, IMov o2 ECX]
+
+-- genDivOp :: BinaryOperator -> Expr () -> Expr () -> ExpressionGenerator
+-- genDivOp oper expr1 expr2 = do
+--   (o1, i1) <- genExpr expr1
+--   (o2, i2) <- genExpr expr2
+--     case (o1, o2) of
+--       (Imm _, Imm _) -> generr (oper, expr1, expr2)
+--       (Mem m1, Imm _) ->
+--         return (Reg EAX, [IPush EDX, IPush ECX, ILoad m1 EAX, IMov o2 ECX, IBinOp oper EAX (Reg ECX), IPop ECX, IPop EDX])
+--       (Imm _, Mem m2) ->
+--         return (Reg EAX, [IPush EDX, IMov o1 EAX, IBinOp oper EAX o2, IPop EDX])
+--       (Mem m1, Mem _) ->
+--         return (Reg EAX, [IPush EDX, ILoad m1 EAX, IBinOp oper EAX o2, IPop EDX])
+--       (Reg r1, Imm _) ->
+--         return (Reg r1, [IPush EDX, IPush ECX, IMov o1 EAX, IMov o2 ECX, IBinOp oper EAX (Reg ECX), IPop ECX, IPop EDX, IMov EAX o1])
+--       (Imm _, Reg r2) ->
+--         return (Reg r2, [IPush EDX, IPush ECX, IMov o1 EAX, IBinOp oper EAX o2])
 
 genUnOp :: UnaryOperator -> Expr () -> ExpressionGenerator
 genUnOp oper expr = do

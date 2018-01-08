@@ -33,7 +33,8 @@ void printInt(int n) {
 }
 
 void printString(struct string *str) {
-  printf("%s\n", str->text);
+  fwrite(str->text, sizeof(char), str->length, stdout);
+  putchar('\n');
 }
 
 void error() {
