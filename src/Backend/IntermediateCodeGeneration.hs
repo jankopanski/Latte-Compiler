@@ -198,8 +198,8 @@ defaultValue :: Type () -> Integer
 defaultValue _ = 0
 
 getArgEnv :: [Arg ()] -> Map Ident Memory
-getArgEnv args = fst $ foldr addArg (empty, 2 * wordLen) args where
-  addArg (Arg () _ argid) (env, size) =
+getArgEnv args = fst $ foldl addArg (empty, 2 * wordLen) args where
+  addArg (env, size) (Arg () _ argid) =
     (insert argid (MemoryArgument size) env, size + wordLen)
 
 usedCallieSave :: [Instruction] -> Register
