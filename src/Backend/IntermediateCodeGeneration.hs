@@ -42,14 +42,11 @@ emptyStore = Store {
   stringEnv = empty
 }
 
-firstReg :: Register
-firstReg = EAX
+sizeOf :: Type () -> Size
+sizeOf _ = wordLen
 
-firstSaveReg :: Register
-firstSaveReg = EBX
-
-lastReg :: Register
-lastReg = maxBound
+defaultValue :: Type () -> Integer
+defaultValue _ = 0
 
 nextReg :: Register -> Register
 nextReg = succ
@@ -63,43 +60,11 @@ isCommutative ADD = True
 isCommutative MUL = True
 isCommutative _ = False
 
-sizeOf :: Type () -> Size
-sizeOf _ = wordLen
-
-defaultValue :: Type () -> Integer
-defaultValue _ = 0
-
-getArgEnv :: [Arg ()] -> Map Ident Memory
-getArgEnv args = fst $ foldl addArg (empty, 2 * wordLen) args where
-  addArg (env, size) (Arg () _ argid) =
-    (insert argid (MemoryArgument size) env, size + wordLen)
-
-usedCallieSave :: [Instruction] -> Register
-usedCallieSave = foldl scanIns firstReg where
-  scanIns mr (IMov _ r) = max mr r
-  scanIns mr _ = mr
-
-prolog :: Size -> Register -> [Instruction]
-prolog size reg = [IPush EBP, IMov (Reg ESP) EBP, IBinOp SUB ESP (Imm size)] ++
-  case reg of
-    EBX -> [IPush EBX]
-    EDI -> [IPush EBX, IPush EDI]
-    ESI -> [IPush EBX, IPush EDI, IPush ESI]
-    _ -> []
-
-epilog :: Label -> Register -> [Instruction]
-epilog lab reg = [ILabel lab] ++ pops ++ [IMov (Reg EBP) ESP, IPop EBP, IRet] where
-  pops = case reg of
-    EBX -> [IPop EBX]
-    EDI -> [IPop EDI, IPop EBX]
-    ESI -> [IPop ESI, IPop EDI, IPop EBX]
-    _ -> []
+generr :: Show a => a -> Generator b
+generr err = error $ "Unexpected error\n" ++ show err
 
 newLabel :: TopGenerator Label
 newLabel = state (\s -> let n = labelCounter s in (Label n, s {labelCounter = n + 1}))
-
-generr :: Show a => a -> Generator b
-generr err = error $ "Unexpected error\n" ++ show err
 
 getStringLabel :: String -> Generator Label
 getStringLabel str = get >>= \store ->
@@ -139,8 +104,34 @@ genTopDef (FnDef () _ ident args block) = do
   ins <- execWriterT (runReaderT (genBlock block) (Environment l))
   s2 <- get
   let callieSave = usedCallieSave ins
-      fullIns = prolog (maxLocalSize s2) callieSave ++ ins ++ epilog l callieSave
+      fullIns = genProlog (maxLocalSize s2) callieSave ++ ins ++ genEpilog l callieSave
   return (ident, fullIns)
+
+getArgEnv :: [Arg ()] -> Map Ident Memory
+getArgEnv args = fst $ foldl addArg (empty, 2 * wordLen) args where
+  addArg (env, size) (Arg () _ argid) =
+    (insert argid (MemoryArgument size) env, size + wordLen)
+
+usedCallieSave :: [Instruction] -> Register
+usedCallieSave = foldl scanIns EAX where
+  scanIns mr (IMov _ r) = max mr r
+  scanIns mr _ = mr
+
+genProlog :: Size -> Register -> [Instruction]
+genProlog size reg = [IPush EBP, IMov (Reg ESP) EBP, IBinOp SUB ESP (Imm size)] ++
+  case reg of
+    EBX -> [IPush EBX]
+    EDI -> [IPush EBX, IPush EDI]
+    ESI -> [IPush EBX, IPush EDI, IPush ESI]
+    _ -> []
+
+genEpilog :: Label -> Register -> [Instruction]
+genEpilog lab reg = [ILabel lab] ++ pops ++ [IMov (Reg EBP) ESP, IPop EBP, IRet] where
+  pops = case reg of
+    EBX -> [IPop EBX]
+    EDI -> [IPop EDI, IPop EBX]
+    ESI -> [IPop ESI, IPop EDI, IPop EBX]
+    _ -> []
 
 genBlock :: Block () -> StatementGenerator
 genBlock (Block () stmts) = do
@@ -177,7 +168,7 @@ genStmt (Ass () ident expr) = do
   (o, i) <- genExpr expr
   m2 <- getLoc ident
   case o of
-    Mem m1 -> tell [ILoad m1 firstReg, IStore (Reg firstReg) m2]
+    Mem m1 -> tell [ILoad m1 EAX, IStore (Reg EAX) m2]
     _ -> tell $ i ++ [IStore o m2]
 
 genStmt (Incr () ident) = getLoc ident >>= \m -> tell [IUnOp INC (Mem m)]
@@ -273,13 +264,13 @@ genBinOp oper expr1 expr2 = do
   case (o1, o2) of
     (Imm _, Imm _) -> generr (oper, expr1, expr2)
     (Mem m1, Imm _) ->
-      return (Reg firstReg, [ILoad m1 firstReg, IBinOp oper firstReg o2])
+      return (Reg EAX, [ILoad m1 EAX, IBinOp oper EAX o2])
     (Imm _, Mem m2) ->
-      return (Reg firstReg, if isCommutative oper
-        then [ILoad m2 firstReg, IBinOp oper firstReg o1]
-        else [IMov o1 firstReg, IBinOp oper firstReg o2])
+      return (Reg EAX, if isCommutative oper
+        then [ILoad m2 EAX, IBinOp oper EAX o1]
+        else [IMov o1 EAX, IBinOp oper EAX o2])
     (Mem m1, Mem _) ->
-      return (Reg firstReg, [ILoad m1 firstReg, IBinOp oper firstReg o2])
+      return (Reg EAX, [ILoad m1 EAX, IBinOp oper EAX o2])
     (Reg r1, Imm _) ->
       return (o1, i1 ++ [IBinOp oper r1 o2])
     (Imm _, Reg r2) -> return $
@@ -315,7 +306,7 @@ genUnOp oper expr = do
   (o, i) <- genExpr expr
   case o of
     Imm _ -> generr (oper, expr)
-    Mem m -> return (Reg firstReg, i ++ [ILoad m firstReg, IUnOp oper (Reg firstReg)])
+    Mem m -> return (Reg EAX, i ++ [ILoad m EAX, IUnOp oper (Reg EAX)])
     Reg _ -> return (o, i ++ [IUnOp oper o])
 
 -- Jumping code --
@@ -357,8 +348,8 @@ genCondInit expr = do
   lfalse <- lift $ lift newLabel
   lafter <- lift $ lift newLabel
   i <- genCond expr ltrue lfalse
-  return (Reg firstReg, i ++ [ILabel ltrue, IMov (Imm 1) firstReg, IJump lafter,
-    ILabel lfalse, IMov (Imm 0) firstReg, ILabel lafter])
+  return (Reg EAX, i ++ [ILabel ltrue, IMov (Imm 1) EAX, IJump lafter,
+    ILabel lfalse, IMov (Imm 0) EAX, ILabel lafter])
 
 genRelOp :: RelationOperator -> Expr () -> Expr () ->
             Label -> Label -> Generator [Instruction]
@@ -368,11 +359,11 @@ genRelOp oper expr1 expr2 ltrue lfalse = do
   case (o1, o2) of
     (Imm _, Imm _) -> generr (oper, expr1, expr2, ltrue, lfalse)
     (Imm _, Mem m2) ->
-      return [ILoad m2 firstReg, IJumpCond (revRelOp oper) firstReg o1 ltrue, IJump lfalse]
+      return [ILoad m2 EAX, IJumpCond (revRelOp oper) EAX o1 ltrue, IJump lfalse]
     (Mem m1, Imm _) ->
-      return [ILoad m1 firstReg, IJumpCond oper firstReg o2 ltrue, IJump lfalse]
+      return [ILoad m1 EAX, IJumpCond oper EAX o2 ltrue, IJump lfalse]
     (Mem m1, Mem _) ->
-      return [ILoad m1 firstReg, IJumpCond oper firstReg o2 ltrue, IJump lfalse]
+      return [ILoad m1 EAX, IJumpCond oper EAX o2 ltrue, IJump lfalse]
     (Reg r1, Imm _) ->
       return (i1 ++ [IJumpCond oper r1 o2 ltrue, IJump lfalse])
     (Imm _, Reg r2) ->
