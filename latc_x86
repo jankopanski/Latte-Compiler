@@ -9,4 +9,4 @@ if [ -f $1 ]; then
 else
   FILE=$2
 fi
-gcc -m32 "$SPATH/lib/runtime.o" "${FILE%.*}.s" -o "${FILE%.lat}"
+gcc -m32 "$SPATH/lib/runtime.o" "${FILE%.*}.s" -o "${FILE%.*}"
