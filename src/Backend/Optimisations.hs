@@ -1,15 +1,19 @@
 module Backend.Optimisations where
 
+import Data.Set (Set, empty, insert, member)
+
 import Backend.IntermediateCode
 
 optimise :: Code -> IO Code
 optimise code =
-  applyph 1 optMove code >>=
+  applyph 3 optJump2 code >>=
+  applyph 2 optJump1 >>=
+  removeUnusedLabels >>=
+  applyph 1 optMove  >>=
   applyph 1 optAddId >>=
   applyph 1 optMulId >>=
-  applyph 3 optJump2 >>=
-  applyph 2 optJump1 >>=
-  applyph 2 optStore
+  applyph 2 optStore >>=
+  applyph 2 optMoveSwap
 
 applyph :: Int -> ([Instruction] -> [Instruction]) -> Code -> IO Code
 applyph size opt = return . peephole size opt
@@ -52,6 +56,12 @@ optStore i@[IStore (Reg r1) m2, ILoad m3 r4] =
   else i
 optStore i = i
 
+optMoveSwap :: [Instruction] -> [Instruction]
+optMoveSwap i@[IStore (Imm n) m2, ILoad m3 r4] =
+  if m2 == m3 then [IMov (Imm n) r4, IStore (Reg r4) m2] else i
+optMoveSwap i = i
+
+
 optAddId :: [Instruction] -> [Instruction]
 optAddId i@[IBinOp op _ (Imm 0)] = if op == ADD || op == SUB then [] else i
 optAddId i = i
@@ -68,3 +78,23 @@ optJump2 :: [Instruction] -> [Instruction]
 optJump2 i@[IJumpCond op r1 o2 l1, IJump l2, ILabel l3] =
   if l1 == l3 then [IJumpCond (negRelOp op) r1 o2 l2, IJump l1, ILabel l3] else i
 optJump2 i = i
+
+removeUnusedLabels :: Code -> IO Code
+removeUnusedLabels code = do
+  let optfuns =
+        map (\(ident, ins) -> (ident, removeLabelsFromFunction ins)) (functions code)
+  return (code { functions = optfuns })
+
+removeLabelsFromFunction :: [Instruction] -> [Instruction]
+removeLabelsFromFunction ins =
+  let labels = collectLabels ins in foldr (\i ins' ->
+    case i of
+      ILabel l -> if member l labels then i:ins' else ins'
+      _ -> i:ins') [] ins
+
+collectLabels :: [Instruction] -> Set Label
+collectLabels = foldl (\s i ->
+  case i of
+    IJump l -> insert l s
+    IJumpCond _ _ _ l -> insert l s
+    _ -> s) empty

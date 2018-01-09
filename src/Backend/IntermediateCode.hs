@@ -6,7 +6,7 @@ import Parser.AbsLatte
 
 type Size = Integer
 
-data Label = Label Integer | StringLabel Integer deriving (Eq)
+data Label = Label Integer | StringLabel Integer deriving (Eq, Ord)
 
 data Register = EBP | ESP | EAX | ECX | EDX | EBX | EDI | ESI
   deriving (Eq, Ord, Enum, Bounded)
