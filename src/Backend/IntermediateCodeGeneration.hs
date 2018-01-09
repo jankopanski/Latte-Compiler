@@ -381,26 +381,3 @@ genRelOp oper expr1 expr2 ltrue lfalse = do
           [IPop EAX, IJumpCond oper ESI (Reg EAX) ltrue, IJump lfalse]
         _ -> let r3 = nextReg r1 in i1 ++ [IMov o1 r3] ++ i2 ++
           [IJumpCond oper r3 o2 ltrue, IJump lfalse]
-
-mapRelOp :: RelOp () -> RelationOperator
-mapRelOp (LTH ()) = RLT
-mapRelOp (LE ()) = RLE
-mapRelOp (GTH ()) = RGT
-mapRelOp (GE ()) = RGE
-mapRelOp (EQU ()) = REQ
-mapRelOp (NE ()) = RNE
-
--- negRelOp :: RelationOperator -> RelationOperator
--- negRelOp REQ = RNE
--- negRelOp RNE = REQ
--- negRelOp RGT = RLE
--- negRelOp RGE = RLT
--- negRelOp RLT = RGE
--- negRelOp RLE = RGT
-
-revRelOp :: RelationOperator -> RelationOperator
-revRelOp RGT = RLT
-revRelOp RGE = RLE
-revRelOp RLT = RGT
-revRelOp RLE = RGE
-revRelOp oper = oper

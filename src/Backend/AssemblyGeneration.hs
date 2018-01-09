@@ -11,7 +11,7 @@ generateAssembly code = return $ unlines $
   concatMap generateFunction (functions code)
 
 generateFunction :: (Ident, [Instruction]) -> [String]
-generateFunction (Ident s, ins) = (".globl " ++ s) : (s ++ ":") : map show ins
+generateFunction (Ident s, ins) = ("\t.globl " ++ s) : (s ++ ":") : map show ins
 
 generateString :: (String, Label) -> [String]
 generateString (string, label) = [show label ++ ":", "\t.string " ++ show string]

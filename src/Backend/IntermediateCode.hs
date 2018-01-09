@@ -6,7 +6,7 @@ import Parser.AbsLatte
 
 type Size = Integer
 
-data Label = Label Integer | StringLabel Integer
+data Label = Label Integer | StringLabel Integer deriving (Eq)
 
 data Register = EBP | ESP | EAX | ECX | EDX | EBX | EDI | ESI
   deriving (Eq, Ord, Enum, Bounded)
@@ -16,6 +16,7 @@ data Memory
   | MemoryLocal Integer
   | MemoryOffset Register Integer
   | MemoryGlobal Label
+  deriving (Eq)
 
 data Operand
   = Reg Register
@@ -49,8 +50,33 @@ data Code = Code {
   strings :: [(String, Label)]
 } deriving (Show)
 
+-- Helper functions --
+
 wordLen :: Size
 wordLen = 4
+
+mapRelOp :: RelOp () -> RelationOperator
+mapRelOp (LTH ()) = RLT
+mapRelOp (LE ()) = RLE
+mapRelOp (GTH ()) = RGT
+mapRelOp (GE ()) = RGE
+mapRelOp (EQU ()) = REQ
+mapRelOp (NE ()) = RNE
+
+negRelOp :: RelationOperator -> RelationOperator
+negRelOp REQ = RNE
+negRelOp RNE = REQ
+negRelOp RGT = RLE
+negRelOp RGE = RLT
+negRelOp RLT = RGE
+negRelOp RLE = RGT
+
+revRelOp :: RelationOperator -> RelationOperator
+revRelOp RGT = RLT
+revRelOp RGE = RLE
+revRelOp RLT = RGT
+revRelOp RLE = RGE
+revRelOp oper = oper
 
 -- Show functions --
 
@@ -116,7 +142,10 @@ instance Show Instruction where
   show (IUnOp op o) = showSingle (show op) o
   show (IJump l) = showSingle "jmp" l
   show (IJumpCond op r1 o2 l) =
-    showDouble "cmpl" o2 r1 ++ "\n" ++ showSingle (show op) l
+    case o2 of
+      Imm 0 -> showDouble "testl" r1 r1
+      _ -> showDouble "cmpl" o2 r1
+    ++ "\n" ++ showSingle (show op) l
   show IRet = "\tret"
   show (ILabel l) = show l ++ ":"
 
