@@ -23,7 +23,7 @@ data Operand
   | Mem Memory
   | Imm Integer
 
-data BinaryOperator = ADD | SUB | MUL | DIV | MOD deriving Eq
+data BinaryOperator = ADD | SUB | MUL | DIV | MOD | SAL deriving Eq
 
 data RelationOperator = REQ | RNE | RGT | RGE | RLT | RLE deriving Eq
 
@@ -112,6 +112,7 @@ instance Show BinaryOperator where
   show MUL = "imull"
   show DIV = "idivl"
   show MOD = "idivl"
+  show SAL = "sall"
 
 instance Show RelationOperator where
   show REQ = "je"

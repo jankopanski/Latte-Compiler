@@ -13,8 +13,8 @@ optimise code =
   applyph 1 optAddId >>=
   applyph 1 optMulId >>=
   applyph 2 optStore >>=
-  applyph 2 optMoveSwap
-
+  applyph 2 optMoveSwap >>=
+  applyph 1 optMulPower
 applyph :: Int -> ([Instruction] -> [Instruction]) -> Code -> IO Code
 applyph size opt = return . peephole size opt
 
@@ -69,6 +69,11 @@ optAddId i = i
 optMulId :: [Instruction] -> [Instruction]
 optMulId i@[IBinOp op _ (Imm 1)] = if op == MUL || op == DIV || op == MOD then [] else i
 optMulId i = i
+
+optMulPower :: [Instruction] -> [Instruction]
+optMulPower i@[IBinOp MUL r (Imm n)] =
+  if n `mod` 2 == 0 then [IBinOp SAL r (Imm $ truncate $ logBase 2 (fromIntegral n))] else i
+optMulPower i = i
 
 optJump1 :: [Instruction] -> [Instruction]
 optJump1 i@[IJump l1, ILabel l2] = if l1 == l2 then [ILabel l2] else i
