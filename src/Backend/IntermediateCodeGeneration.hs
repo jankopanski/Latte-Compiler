@@ -227,15 +227,18 @@ genExpr (ELitFalse ()) = return (Imm 0, [])
 genExpr (EApp () ident exprs) = do
   params <- mapM genExpr exprs
   let ins = foldl (\ins' (o, i) -> i ++ [IParam o] ++ ins') [] params
-  let reg = if null params then EAX else maximum $ map (toReg . fst) params
-  return (Reg reg, ins ++ [ICall ident (fromIntegral $ length params), IMov (Reg EAX) reg])
+      reg = if null params then EAX else maximum $ map (toReg . fst) params
+      n = fromIntegral $ length params
+  return (Reg reg, ins ++ [ICall ident n,
+          IBinOp ADD ESP (Imm (n*wordLen)), IMov (Reg EAX) reg])
 
 genExpr (EString () s) = do
   l <- getStringLabel s
   return (Reg EAX, [
     IParam (Imm (fromIntegral $ length s)),
     IParam (Mem (MemoryGlobal l)),
-    ICall (Ident "_allocString") 2])
+    ICall (Ident "_allocString") 2,
+    IBinOp ADD ESP (Imm (2*wordLen))])
 
 genExpr (Neg () expr) = genUnOp NEG expr
 

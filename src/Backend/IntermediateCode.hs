@@ -134,8 +134,7 @@ instance Show Instruction where
   show (IPush r) = showSingle "pushl" r
   show (IPop r) = showSingle "popl" r
   show (IParam o) = showSingle "pushl" o
-  show (ICall (Ident s) n) =
-    "\tcall " ++ s ++ nextins (IBinOp ADD ESP (Imm (n*wordLen)))
+  show (ICall (Ident s) _) = "\tcall " ++ s
   show (IBinOp DIV _ o) = "\tcdq\n" ++ showSingle (show DIV) o
   show (IBinOp MOD _ o) = "\tcdq\n" ++ showSingle (show MOD) o
   show (IBinOp op r1 o2) = showDouble (show op) o2 r1
