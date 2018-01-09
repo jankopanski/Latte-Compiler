@@ -13,6 +13,7 @@ import Frontend.StaticEvaluation (runStaticEvaluation)
 import Frontend.ReturnEvaluation (runReturnEvaluation)
 import Frontend.StringEvaluation (runStringEvaluation)
 import Backend.IntermediateCodeGeneration (runIntermediateCodeGeneration)
+import Backend.Optimisations (optimise)
 import Backend.AssemblyGeneration (generateAssembly, generateFile)
 
 type Verbosity = Int
@@ -74,6 +75,13 @@ run v f =
       showTree v tree
 
       code <- runIntermediateCodeGeneration (void tree)
+      putStrV v "Code generation completed"
+      putStrV v (show code)
+
+      code <- optimise code
+      putStrV v "Optimisations completed"
+      putStrV v (show code)
+
       asm <- generateAssembly code
       putStrV v asm
 

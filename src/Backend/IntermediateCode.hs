@@ -47,7 +47,7 @@ data Instruction
 data Code = Code {
   functions :: [(Ident, [Instruction])],
   strings :: [(String, Label)]
-}
+} deriving (Show)
 
 wordLen :: Size
 wordLen = 4
