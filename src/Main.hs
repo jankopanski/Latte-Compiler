@@ -62,29 +62,29 @@ run v f =
       runTypeControl tree
       putStrV v "Type control completed\n"
 
-      tree <- runStaticEvaluation tree
-      putStrV v "Static evaluation completed"
-      showTree v tree
-
-      tree <- runReturnEvaluation tree
-      putStrV v "Return optimisation completed"
-      showTree v tree
-
-      tree <- runStringEvaluation tree
-      putStrV v "String evaluation completed"
-      showTree v tree
-
-      code <- runIntermediateCodeGeneration (void tree)
-      putStrV v "Code generation completed"
-      putStrV v (show code)
-
-      code <- optimise code
-      putStrV v "Optimisations completed"
-      putStrV v (show code)
-
-      asm <- generateAssembly code
-      putStrV v asm
-
-      generateFile f asm
+      -- tree <- runStaticEvaluation tree
+      -- putStrV v "Static evaluation completed"
+      -- showTree v tree
+      --
+      -- tree <- runReturnEvaluation tree
+      -- putStrV v "Return optimisation completed"
+      -- showTree v tree
+      --
+      -- tree <- runStringEvaluation tree
+      -- putStrV v "String evaluation completed"
+      -- showTree v tree
+      --
+      -- code <- runIntermediateCodeGeneration (void tree)
+      -- putStrV v "Code generation completed"
+      -- putStrV v (show code)
+      --
+      -- code <- optimise code
+      -- putStrV v "Optimisations completed"
+      -- putStrV v (show code)
+      --
+      -- asm <- generateAssembly code
+      -- putStrV v asm
+      --
+      -- generateFile f asm
       putStrLn "OK"
       exitSuccess
