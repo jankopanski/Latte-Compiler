@@ -69,11 +69,11 @@ run v f =
       tree <- runReturnEvaluation tree
       putStrV v "Return optimisation completed"
       showTree v tree
+
+      tree <- runStringEvaluation tree
+      putStrV v "String evaluation completed"
+      showTree v tree
       
-      -- tree <- runStringEvaluation tree
-      -- putStrV v "String evaluation completed"
-      -- showTree v tree
-      --
       -- code <- runIntermediateCodeGeneration (void tree)
       -- putStrV v "Code generation completed"
       -- putStrV v (show code)
