@@ -62,14 +62,14 @@ run v f =
       runTypeControl tree
       putStrV v "Type control completed\n"
 
-      -- tree <- runStaticEvaluation tree
-      -- putStrV v "Static evaluation completed"
-      -- showTree v tree
-      --
-      -- tree <- runReturnEvaluation tree
-      -- putStrV v "Return optimisation completed"
-      -- showTree v tree
-      --
+      tree <- runStaticEvaluation tree
+      putStrV v "Static evaluation completed"
+      showTree v tree
+
+      tree <- runReturnEvaluation tree
+      putStrV v "Return optimisation completed"
+      showTree v tree
+      
       -- tree <- runStringEvaluation tree
       -- putStrV v "String evaluation completed"
       -- showTree v tree

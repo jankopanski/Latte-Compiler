@@ -25,6 +25,7 @@ returnEvalTopDef (FnDef pos ret ident args block) =
     (Void _, _) -> Right $ FnDef pos ret ident args block'
     (_, False) -> Left (ident, pos)
     _ -> Right $ FnDef pos ret ident args block'
+returnEvalTopDef def = Right def
 
 -- Bool informs whether there was a return --
 returnEvalBlock :: Block Position -> (Block Position, Bool)
