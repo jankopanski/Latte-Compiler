@@ -242,6 +242,8 @@ checkStmt (Decl _ argtype items) = mapM_ checkDecl items where
     unless (exprtype == argtype) $ throwError (TypeMismatch name exprtype argtype)
     checkDecl (NoInit pos ident)
 
+checkStmt (Ass _ [] _) = throwError (CustomError "No variable for assignment")
+
 checkStmt (Ass _ [Var pos ident] expr) = do
   exprtype <- checkExpr expr
   checkVarMatch pos ident exprtype
@@ -250,6 +252,17 @@ checkStmt (Ass _ (Var pos ident@(Ident name) : vars) expr) = do
   exprtype <- checkExpr expr
   finaltype <- getFinalType pos ident vars
   unless (finaltype == exprtype) $ throwError (TypeMismatch name finaltype exprtype)
+
+checkStmt (ArrAss pos (Ident name) expr1 expr2) = do
+  indextype <- checkExpr expr1
+  unless (indextype == Int pos) $
+    throwError (TypeMismatchAnonymous $ Int $ getPositionFromType indextype)
+  marrtype <- lift $ getVarType name
+  when (isNothing marrtype) $ throwError (UndefinedVariable name pos)
+  let arrtype = fromJust marrtype
+  valtype <- checkExpr expr2
+  unless (arrtype == Arr pos valtype) $
+    throwError (TypeMismatch name arrtype (Arr pos valtype))
 
 checkStmt (Incr pos ident) = checkVarMatch pos ident (Int pos)
 
@@ -281,6 +294,16 @@ checkStmt (While pos expr stmt) = do
   unless (exprtype == Bool pos) $ throwError (TypeMismatchAnonymous exprtype)
   checkStmt stmt
 
+checkStmt (For pos t (Ident name1) (Ident name2) stmt) = do
+  marrtype <- lift $ getVarType name2
+  when (isNothing marrtype) $ throwError (UndefinedVariable name2 pos)
+  let arrtype = fromJust marrtype
+  unless (arrtype == Arr pos t) $ throwError (TypeMismatch name1 arrtype (Arr pos t))
+  inenv <- lift getInner
+  lift $ putInner (Map.insert name1 t inenv)
+  checkStmt stmt
+  lift $ putInner inenv
+
 checkStmt (SExp _ expr) = void $ checkExpr expr
 
 checkVarMatch :: Position -> Ident -> Type Position -> StatementChecker ()
@@ -294,6 +317,7 @@ checkVarMatch pos (Ident name) acttype = do
 
 checkExpr :: Expr Position -> ExpressionChecker
 
+checkExpr (EVar pos []) = throwError (UnexpectedError pos)
 checkExpr (EVar _ [Var pos (Ident name)]) = do
   (inenv, outenv) <- get
   case Map.lookup name inenv of
@@ -301,7 +325,6 @@ checkExpr (EVar _ [Var pos (Ident name)]) = do
     Nothing -> case Map.lookup name outenv of
       Just t -> return t
       Nothing -> throwError (UndefinedVariable name pos)
-
 checkExpr (EVar _ (Var pos ident : vars)) = getFinalType pos ident vars
 
 checkExpr (ELitTrue pos) = return $ Bool pos
@@ -324,6 +347,31 @@ checkExpr (EApp pos (Ident name) exprs) = do
 checkExpr (ELitInt pos _) = return $ Int pos
 
 checkExpr (EString pos _) = return $ Str pos
+
+checkExpr (ENewArr _ t@Void{} _) = throwError (TypeMismatchAnonymous t)
+checkExpr (ENewArr _ t@Fun{} _) = throwError (TypeMismatchAnonymous t)
+checkExpr (ENewArr pos t _) = return $ Arr pos t
+
+checkExpr (EAccArr pos (Ident name) expr) = do
+  exprtype <- checkExpr expr
+  unless (exprtype == Int pos) $ throwError (TypeMismatchAnonymous $ Int pos)
+  marrtype <- lift $ getVarType name
+  when (isNothing marrtype) $ throwError (UndefinedVariable name pos)
+  case fromJust marrtype of
+    Arr _ t -> return t
+    _ -> throwError (UnexpectedError pos)
+
+checkExpr (ENewCls pos ident@(Ident name)) = do
+  clsenv <- getClasses
+  case Map.lookup ident clsenv of
+    Nothing -> throwError (UndefinedType name pos)
+    Just _ -> return (Cls pos ident)
+
+checkExpr (ENull pos ident@(Ident name)) = do
+  clsenv <- getClasses
+  case Map.lookup ident clsenv of
+    Nothing -> throwError (UndefinedType name pos)
+    Just _ -> return (Cls pos ident)
 
 checkExpr (Neg pos expr) = checkUnOp expr (Int pos)
 
