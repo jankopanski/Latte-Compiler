@@ -16,6 +16,7 @@ evalProgram (Program pos topdefs) = Program pos (map evalTopDef topdefs)
 evalTopDef :: TopDef Position -> TopDef Position
 evalTopDef (FnDef pos ret ident args block) =
   FnDef pos ret ident args (evalBlock block)
+evalTopDef def = def
 
 evalBlock :: Block Position -> Block Position
 evalBlock (Block pos stmts) =
@@ -38,7 +39,9 @@ evalStmt (Decl pos argtype items) = Decl pos argtype (map evalItem items) where
   evalItem (Init ipos ident expr) = Init ipos ident (evalExpr expr)
   evalItem i = i
 
-evalStmt (Ass pos ident expr) = Ass pos ident (evalExpr expr)
+evalStmt (Ass pos vars expr) = Ass pos vars (evalExpr expr)
+
+evalStmt (ArrAss pos ident expr1 expr2) = ArrAss pos ident (evalExpr expr1) (evalExpr expr2)
 
 evalStmt (Ret pos expr) = Ret pos (evalExpr expr)
 
@@ -61,6 +64,8 @@ evalStmt (CondElse pos expr stmt1 stmt2) =
 
 evalStmt (While pos expr stmt) = While pos (evalExpr expr) (evalStmt stmt)
 
+evalStmt (For pos t ident1 ident2 stmt) = For pos t ident1 ident2 (evalStmt stmt)
+
 evalStmt (SExp pos expr) = SExp pos (evalExpr expr)
 
 evalStmt s = s
@@ -72,6 +77,10 @@ evalExpr :: Expr Position -> Expr Position
 evalExpr (EApp pos ident exprs) = EApp pos ident (map evalExpr exprs)
 
 evalExpr (EString pos s) = EString pos (read s)
+
+evalExpr (ENewArr pos t expr) = ENewArr pos t (evalExpr expr)
+
+evalExpr (EAccArr pos ident expr) = EAccArr pos ident (evalExpr expr)
 
 evalExpr (Neg pos expr) =
   case evalExpr expr of
