@@ -14,6 +14,7 @@ import Frontend.Globals
 -- Data structures --
 
 type Name = String
+type ClsEnv = Map.Map Ident (Map.Map Ident (Type Position))
 type TypeEnv = Map.Map Name (Type Position)
 type TypeScope = (TypeEnv, TypeEnv)
 
@@ -21,6 +22,7 @@ data Error
   = Redefinition Name Position Position
   | TypeMismatch Name (Type Position) (Type Position)
   | TypeMismatchAnonymous (Type Position)
+  | UndefinedType Name Position
   | UndefinedVariable Name Position
   | UndefinedFunction Name Position
   | VariableCall Name Position
@@ -41,6 +43,8 @@ instance Show Error where
       "' was declared at " ++ showPosition (getPositionFromType expected)
   show (TypeMismatchAnonymous t) =
     showErrorPosition (getPositionFromType t) ++ "Expected type " ++ show t
+  show (UndefinedType name pos) =
+    showErrorPosition pos ++ "Undefined type '" ++ name ++ "'"
   show (UndefinedFunction name pos) =
     showErrorPosition pos ++ "Undefined function '" ++ name ++ "'"
   show (UndefinedVariable name pos) =
@@ -64,7 +68,7 @@ instance Show Error where
     showErrorPosition pos ++ "Unexpected error in type control module"
 
 type Checker a = ExceptT Error (State TypeScope) a
-type StatementChecker a = ReaderT (Type Position) (ExceptT Error (State TypeScope)) a
+type StatementChecker a = ReaderT (ClsEnv, Type Position) (ExceptT Error (State TypeScope)) a
 type ExpressionChecker = StatementChecker (Type Position)
 
 -- Helper functions --
@@ -74,6 +78,8 @@ getPositionFromType (Int pos)     = pos
 getPositionFromType (Str pos)     = pos
 getPositionFromType (Bool pos)    = pos
 getPositionFromType (Void pos)    = pos
+getPositionFromType (Arr pos _)   = pos
+getPositionFromType (Cls pos _)   = pos
 getPositionFromType (Fun pos _ _) = pos
 
 getInner :: Checker TypeEnv
@@ -88,12 +94,34 @@ putInner inenv = getOuther >>= \outenv -> put (inenv, outenv)
 putOuther :: TypeEnv -> Checker ()
 putOuther outenv = getInner >>= \inenv -> put (inenv, outenv)
 
+getClasses :: StatementChecker ClsEnv
+getClasses = ask >>= \env -> return $ fst env
+
 getVarType :: Name -> Checker (Maybe (Type Position))
 getVarType name = do
   (inenv, outenv) <- get
   return $ case Map.lookup name inenv of
     Nothing -> Map.lookup name outenv
     e -> e
+
+getFinalType :: Position -> Ident -> [Var Position] -> ExpressionChecker
+getFinalType pos ident@(Ident name) vars = do
+  mclstype <- lift $ getVarType name
+  when (isNothing mclstype) $ throwError (UndefinedVariable name pos)
+  let vartype = fromJust mclstype
+  unless (vartype == Cls pos ident) $ throwError (TypeMismatch name (Cls pos ident) vartype)
+  foldM resolveVar (Cls pos ident) vars
+  where
+  resolveVar :: Type Position -> Var Position -> StatementChecker (Type Position)
+  resolveVar (Cls pos' clsid@(Ident name')) (Var pos'' fieldid@(Ident name'')) = do
+    clsenv <- getClasses
+    case Map.lookup clsid clsenv of
+      Nothing -> throwError (UndefinedType name' pos')
+      Just fieldMap -> case Map.lookup fieldid fieldMap of
+        Nothing -> throwError (UndefinedVariable name'' pos'')
+        Just t -> return t
+  resolveVar t (Var pos' ident'@(Ident name')) =
+    throwError (TypeMismatch name' (Cls pos' ident') t)
 
 -- Top functions --
 
@@ -105,10 +133,45 @@ runTypeControl program =
 
 checkProgram :: Program Position -> Checker ()
 checkProgram (Program _ topdefs) = do
+  clsenv <- collectClassDefs topdefs
+  checkClassDefs clsenv
   mapM_ addFnDecl inbuildFunctions
   mapM_ addFnDecl topdefs
   checkIsMain
-  mapM_ checkTopDef topdefs
+  mapM_ (checkFunction clsenv) topdefs
+
+collectClassDefs :: [TopDef Position] -> Checker ClsEnv
+collectClassDefs topdefs = do
+  clsdefs <- foldM addClassDef Map.empty topdefs
+  return $ Map.map fst clsdefs
+
+addClassDef :: Map.Map Ident (Map.Map Ident (Type Position), Position) -> TopDef Position ->
+  Checker (Map.Map Ident (Map.Map Ident (Type Position), Position))
+addClassDef clsdefs (ClsDef pos ident@(Ident name) fields) =
+  case Map.lookup ident clsdefs of
+    Just (_, pos') -> throwError (Redefinition name pos pos')
+    Nothing -> foldM addField Map.empty fields >>=
+      \fieldMap -> return $ Map.insert ident (fieldMap, pos) clsdefs
+addClassDef clsdefs _ = return clsdefs
+
+addField :: Map.Map Ident (Type Position) -> Field Position ->
+  Checker (Map.Map Ident (Type Position))
+addField fieldMap (Field pos t ident@(Ident name)) =
+  case Map.lookup ident fieldMap of
+    Just t' -> throwError (Redefinition name pos (getPositionFromType t'))
+    Nothing -> return $ Map.insert ident t fieldMap
+
+checkClassDefs :: ClsEnv -> Checker ()
+checkClassDefs clsdefs = mapM_ checkClassFields clsdefs where
+  checkClassFields :: Map.Map Ident (Type Position) -> Checker ()
+  checkClassFields = mapM_ checkField
+  checkField :: Type Position -> Checker ()
+  checkField t@Fun{} = throwError (TypeMismatchAnonymous t)
+  checkField t@Void{} = throwError (TypeMismatchAnonymous t)
+  checkField (Cls pos ident@(Ident name)) = case Map.lookup ident clsdefs of
+    Nothing -> throwError (UndefinedType name pos)
+    Just _ -> return ()
+  checkField _ = return ()
 
 addFnDecl :: TopDef Position -> Checker ()
 addFnDecl (FnDef fnpos rettype (Ident name) args _) = do
@@ -120,6 +183,7 @@ addFnDecl (FnDef fnpos rettype (Ident name) args _) = do
       when (Void fnpos `elem` argtypes) $
         throwError (CustomErrorPosition "Void argument" fnpos)
       putOuther $ Map.insert name (Fun fnpos rettype argtypes) decls
+addFnDecl ClsDef{} = return ()
 
 checkIsMain :: Checker ()
 checkIsMain = do
@@ -130,13 +194,15 @@ checkIsMain = do
       (Fun _ (Int _) []) -> return ()
       (Fun pos _ _) ->
         throwError (CustomErrorPosition "Invalid 'main' declaration" pos)
+      t -> throwError (TypeMismatchAnonymous t)
 
-checkTopDef :: TopDef Position -> Checker ()
-checkTopDef (FnDef _ ftype _ args block) = do
+checkFunction :: ClsEnv -> TopDef Position -> Checker ()
+checkFunction clsenv (FnDef _ ftype _ args block) = do
   envs <- get
   mapM_ addArg args
-  runReaderT (checkBlock block) ftype
+  runReaderT (checkBlock block) (clsenv, ftype)
   put envs
+checkFunction _ _ = return ()
 
 addArg :: Arg Position -> Checker ()
 addArg (Arg pos argtype (Ident name)) = do
@@ -176,20 +242,25 @@ checkStmt (Decl _ argtype items) = mapM_ checkDecl items where
     unless (exprtype == argtype) $ throwError (TypeMismatch name exprtype argtype)
     checkDecl (NoInit pos ident)
 
-checkStmt (Ass pos ident expr) = do
+checkStmt (Ass _ [Var pos ident] expr) = do
   exprtype <- checkExpr expr
   checkVarMatch pos ident exprtype
+
+checkStmt (Ass _ (Var pos ident@(Ident name) : vars) expr) = do
+  exprtype <- checkExpr expr
+  finaltype <- getFinalType pos ident vars
+  unless (finaltype == exprtype) $ throwError (TypeMismatch name finaltype exprtype)
 
 checkStmt (Incr pos ident) = checkVarMatch pos ident (Int pos)
 
 checkStmt (Decr pos ident) = checkVarMatch pos ident (Int pos)
 
 checkStmt (VRet pos) = do
-  rtype <- ask
+  rtype <- fmap snd ask
   unless (rtype == Void pos) $ throwError (InvalidReturnType (fmap (const pos) rtype))
 
 checkStmt (Ret pos expr) = do
-  rtype <- ask
+  rtype <- fmap snd ask
   etype <- checkExpr expr
   unless (rtype == etype && rtype /= Void pos) $
     throwError (InvalidReturnType (fmap (const pos) rtype))
@@ -223,13 +294,15 @@ checkVarMatch pos (Ident name) acttype = do
 
 checkExpr :: Expr Position -> ExpressionChecker
 
-checkExpr (EVar pos (Ident name)) = do
+checkExpr (EVar _ [Var pos (Ident name)]) = do
   (inenv, outenv) <- get
   case Map.lookup name inenv of
     Just t -> return t
     Nothing -> case Map.lookup name outenv of
       Just t -> return t
       Nothing -> throwError (UndefinedVariable name pos)
+
+checkExpr (EVar _ (Var pos ident : vars)) = getFinalType pos ident vars
 
 checkExpr (ELitTrue pos) = return $ Bool pos
 
