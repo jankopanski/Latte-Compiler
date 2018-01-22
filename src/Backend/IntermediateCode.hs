@@ -16,6 +16,7 @@ data Memory
   | MemoryLocal Integer
   | MemoryOffset Register Integer
   | MemoryGlobal Label
+  | MemoryPointer Register
   deriving (Eq)
 
 data Operand
@@ -100,6 +101,7 @@ instance Show Memory where
   show (MemoryOffset r n) = "-" ++ show n ++ "(" ++ show EBP ++ ", " ++
                             show r ++ ", " ++ show wordLen ++ ")"
   show (MemoryGlobal l) = "$" ++ show l
+  show (MemoryPointer r) = "(" ++ show r ++ ")"
 
 instance Show Operand where
   show (Reg r) = show r

@@ -11,8 +11,11 @@ import Backend.IntermediateCode
 
 -- Data structures --
 
-newtype Environment = Environment {
-  returnLabel :: Label
+type ClsEnv = Map Ident [(Ident, Type ())]
+
+data Environment = Environment {
+  returnLabel :: Label,
+  classEnv :: ClsEnv
 }
 
 data Store = Store {
@@ -90,18 +93,27 @@ runIntermediateCodeGeneration program = evalStateT (genProgram program) emptySto
 
 genProgram :: Program () -> TopGenerator Code
 genProgram (Program () topdefs) = do
-  fs <- mapM genTopDef topdefs
+  let clsenv = collectClasses topdefs
+  fs <- mapM (genFunction clsenv) topdefs
   store <- get
   let strs = assocs (stringEnv store)
   return (Code fs strs)
 
-genTopDef :: TopDef () -> TopGenerator (Ident, [Instruction])
-genTopDef (FnDef () _ ident args block) = do
+collectClasses :: [TopDef ()] -> ClsEnv
+collectClasses = foldl addClass empty where
+  addClass :: ClsEnv -> TopDef () -> ClsEnv
+  addClass clsenv (ClsDef () ident fields) =
+    let fieldList = map (\(Field () t fident) -> (fident, t)) fields
+    in insert ident fieldList clsenv
+  addClass clsenv _ = clsenv
+
+genFunction :: ClsEnv -> TopDef () -> TopGenerator (Ident, [Instruction])
+genFunction clsenv (FnDef () _ ident args block) = do
   let env = getArgEnv args
   l <- newLabel
   s1 <- get
   put (s1 {localSize = 0, variableEnv = env})
-  ins <- execWriterT (runReaderT (genBlock block) (Environment l))
+  ins <- execWriterT (runReaderT (genBlock block) (Environment l clsenv))
   s2 <- get
   let callieSave = usedCallieSave ins
       fullIns = genProlog (maxLocalSize s2) callieSave ++ ins ++ genEpilog l callieSave
@@ -164,12 +176,29 @@ genStmt (Decl () vartype items) = mapM_ genDecl items where
     put (s {variableEnv = insert ident m (variableEnv s)})
     tell $ i ++ [IStore o m]
 
-genStmt (Ass () ident expr) = do
+genStmt s@(Ass () [] expr) = generr s
+
+genStmt (Ass () [Var () ident] expr) = do
   (o, i) <- genExpr expr
   m2 <- getLoc ident
   case o of
     Mem m1 -> tell [ILoad m1 EAX, IStore (Reg EAX) m2]
     _ -> tell $ i ++ [IStore o m2]
+
+-- genStmt (Ass () vars expr) = do
+--
+
+genStmt (ArrAss () ident expr1 expr2) = do
+  (o1, i1) <- genExpr expr1
+  (o2, i2) <- genExpr expr2
+  m <- getLoc ident
+  case m of
+    MemoryLocal n -> tell $ i1 ++ [IParam o1] ++ i2 ++
+      [IMov o2 EAX, IPop ECX, IStore (Reg EAX) (MemoryOffset ECX n)]
+    MemoryArgument n -> tell $ i1 ++ [IParam o1] ++ i2 ++
+      [IMov o2 EAX, IPop ECX, IBinOp MUL ECX (Imm wordLen),
+      IStore (Reg EAX) (MemoryPointer ECX)]
+
 
 genStmt (Incr () ident) = getLoc ident >>= \m -> tell [IUnOp INC (Mem m)]
 
@@ -216,7 +245,7 @@ genStmt (SExp () expr) = genExpr expr >>= \(_, i) -> tell i
 
 genExpr :: Expr () -> ExpressionGenerator
 
-genExpr (EVar () ident) = getLoc ident >>= \m -> return (Mem m, [])
+-- genExpr (EVar () ident) = getLoc ident >>= \m -> return (Mem m, [])
 
 genExpr (ELitInt () n) = return (Imm n, [])
 
