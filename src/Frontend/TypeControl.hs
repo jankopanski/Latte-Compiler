@@ -180,6 +180,17 @@ checkStmt (Ass pos ident expr) = do
   exprtype <- checkExpr expr
   checkVarMatch pos ident exprtype
 
+checkStmt (ArrAss pos (Ident name) expr1 expr2) = do
+  indextype <- checkExpr expr1
+  unless (indextype == Int pos) $
+    throwError (TypeMismatchAnonymous $ Int $ getPositionFromType indextype)
+  marrtype <- lift $ getVarType name
+  when (isNothing marrtype) $ throwError (UndefinedVariable name pos)
+  let arrtype = fromJust marrtype
+  valtype <- checkExpr expr2
+  unless (arrtype == Arr pos valtype) $
+    throwError (TypeMismatch name arrtype (Arr pos valtype))
+
 checkStmt (Incr pos ident) = checkVarMatch pos ident (Int pos)
 
 checkStmt (Decr pos ident) = checkVarMatch pos ident (Int pos)

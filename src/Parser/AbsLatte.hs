@@ -45,6 +45,7 @@ data Stmt a
     | Cond a (Expr a) (Stmt a)
     | CondElse a (Expr a) (Stmt a) (Stmt a)
     | While a (Expr a) (Stmt a)
+    | For a (Type a) Ident Ident (Stmt a)
     | SExp a (Expr a)
   deriving (Eq, Ord, Show, Read)
 
@@ -62,6 +63,7 @@ instance Functor Stmt where
         Cond a expr stmt -> Cond (f a) (fmap f expr) (fmap f stmt)
         CondElse a expr stmt1 stmt2 -> CondElse (f a) (fmap f expr) (fmap f stmt1) (fmap f stmt2)
         While a expr stmt -> While (f a) (fmap f expr) (fmap f stmt)
+        For a type_ ident1 ident2 stmt -> For (f a) (fmap f type_) ident1 ident2 (fmap f stmt)
         SExp a expr -> SExp (f a) (fmap f expr)
 data Item a = NoInit a Ident | Init a Ident (Expr a)
   deriving (Eq, Ord, Show, Read)
@@ -77,7 +79,29 @@ data Type a
     | Void a
     | Arr a (Type a)
     | Fun a (Type a) [Type a]
-  deriving (Eq, Ord, Show, Read)
+  deriving (Ord, Read)
+
+instance Eq (Type e) where
+  Int _ == Int _ = True
+  Str _ == Str _ = True
+  Bool _ == Bool _ = True
+  Void _ == Void _ = True
+  Arr _ t1 == Arr _ t2 = t1 == t2
+  Fun _ ret1 args1 == Fun _ ret2 args2 =
+    ret1 == ret2 && args1 == args2
+  _ == _ = False
+
+instance Show (Type e) where
+  show Int{} = "int"
+  show Str{} = "string"
+  show Bool{} = "boolean"
+  show Void{} = "void"
+  show (Arr _ t) = show t ++ "[]"
+  show (Fun _ ret args) =
+    "Function " ++ show ret ++ "(" ++
+    (if null args then ""
+    else show (head args) ++ unlines (map (\t -> ", " ++ show t) (tail args)))
+    ++ ")"
 
 instance Functor Type where
     fmap f x = case x of
