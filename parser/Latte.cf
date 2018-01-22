@@ -24,13 +24,15 @@ BStmt.     Stmt ::= Block ;
 
 Decl.      Stmt ::= Type [Item] ";" ;
 
-NoInit.    Item ::= Ident ; 
+NoInit.    Item ::= Ident ;
 
 Init.      Item ::= Ident "=" Expr ;
 
 separator nonempty Item "," ;
 
 Ass.       Stmt ::= Ident "=" Expr  ";" ;
+
+ArrAss.    Stmt ::= Ident "[" Expr "]" "=" Expr ";" ;
 
 Incr.      Stmt ::= Ident "++"  ";" ;
 
@@ -58,6 +60,8 @@ Bool.      Type ::= "boolean" ;
 
 Void.      Type ::= "void" ;
 
+Arr.       Type ::= Type "[]" ;
+
 internal   Fun. Type ::= Type "(" [Type] ")" ;
 
 separator  Type "," ;
@@ -75,6 +79,10 @@ ELitFalse. Expr6 ::= "false" ;
 EApp.      Expr6 ::= Ident "(" [Expr] ")" ;
 
 EString.   Expr6 ::= String ;
+
+ENewArr.   Expr6 ::= "new" Type "[" Expr "]" ;
+
+EAccArr.   Expr6 ::= Ident "[" Expr "]" ;
 
 Neg.       Expr5 ::= "-" Expr6 ;
 
@@ -125,4 +133,3 @@ comment    "#" ;
 comment    "//" ;
 
 comment    "/*" "*/" ;
-

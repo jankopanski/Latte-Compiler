@@ -37,6 +37,7 @@ data Stmt a
     | BStmt a (Block a)
     | Decl a (Type a) [Item a]
     | Ass a Ident (Expr a)
+    | ArrAss a Ident (Expr a) (Expr a)
     | Incr a Ident
     | Decr a Ident
     | Ret a (Expr a)
@@ -53,6 +54,7 @@ instance Functor Stmt where
         BStmt a block -> BStmt (f a) (fmap f block)
         Decl a type_ items -> Decl (f a) (fmap f type_) (map (fmap f) items)
         Ass a ident expr -> Ass (f a) ident (fmap f expr)
+        ArrAss a ident expr1 expr2 -> ArrAss (f a) ident (fmap f expr1) (fmap f expr2)
         Incr a ident -> Incr (f a) ident
         Decr a ident -> Decr (f a) ident
         Ret a expr -> Ret (f a) (fmap f expr)
@@ -69,29 +71,13 @@ instance Functor Item where
         NoInit a ident -> NoInit (f a) ident
         Init a ident expr -> Init (f a) ident (fmap f expr)
 data Type a
-    = Int a | Str a | Bool a | Void a | Fun a (Type a) [Type a]
-  deriving (Ord, Read)
-  -- deriving (Eq, Ord, Show, Read)
-
-instance Eq (Type e) where
-  Int _ == Int _ = True
-  Str _ == Str _ = True
-  Bool _ == Bool _ = True
-  Void _ == Void _ = True
-  Fun _ ret1 args1 == Fun _ ret2 args2 =
-    ret1 == ret2 && args1 == args2
-  _ == _ = False
-
-instance Show (Type e) where
-  show Int{} = "int"
-  show Str{} = "string"
-  show Bool{} = "boolean"
-  show Void{} = "void"
-  show (Fun _ ret args) =
-    "Function " ++ show ret ++ "(" ++
-    (if null args then ""
-    else show (head args) ++ unlines (map (\t -> ", " ++ show t) (tail args)))
-    ++ ")"
+    = Int a
+    | Str a
+    | Bool a
+    | Void a
+    | Arr a (Type a)
+    | Fun a (Type a) [Type a]
+  deriving (Eq, Ord, Show, Read)
 
 instance Functor Type where
     fmap f x = case x of
@@ -99,6 +85,7 @@ instance Functor Type where
         Str a -> Str (f a)
         Bool a -> Bool (f a)
         Void a -> Void (f a)
+        Arr a type_ -> Arr (f a) (fmap f type_)
         Fun a type_ types -> Fun (f a) (fmap f type_) (map (fmap f) types)
 data Expr a
     = EVar a Ident
@@ -107,6 +94,8 @@ data Expr a
     | ELitFalse a
     | EApp a Ident [Expr a]
     | EString a String
+    | ENewArr a (Type a) (Expr a)
+    | EAccArr a Ident (Expr a)
     | Neg a (Expr a)
     | Not a (Expr a)
     | EMul a (Expr a) (MulOp a) (Expr a)
@@ -124,6 +113,8 @@ instance Functor Expr where
         ELitFalse a -> ELitFalse (f a)
         EApp a ident exprs -> EApp (f a) ident (map (fmap f) exprs)
         EString a string -> EString (f a) string
+        ENewArr a type_ expr -> ENewArr (f a) (fmap f type_) (fmap f expr)
+        EAccArr a ident expr -> EAccArr (f a) ident (fmap f expr)
         Neg a expr -> Neg (f a) (fmap f expr)
         Not a expr -> Not (f a) (fmap f expr)
         EMul a expr1 mulop expr2 -> EMul (f a) (fmap f expr1) (fmap f mulop) (fmap f expr2)
