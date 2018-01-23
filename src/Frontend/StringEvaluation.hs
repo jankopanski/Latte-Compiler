@@ -72,6 +72,9 @@ strEvalStmt (Decl pos t items) =
 strEvalStmt (Ass pos ident expr) =
   strEvalExpr expr >>= \(_, e) -> return (Ass pos ident e)
 
+strEvalStmt (ArrAss pos ident expr1 expr2) =
+   strEvalExpr expr2 >>= \(_, e) -> return (ArrAss pos ident expr1 e)
+
 strEvalStmt (Ret pos expr) = strEvalExpr expr >>= \(_, e) -> return (Ret pos e)
 
 strEvalStmt (Cond pos expr stmt) = do
@@ -90,6 +93,9 @@ strEvalStmt (While pos expr stmt) = do
   s <- strEvalStmt stmt
   return (While pos e s)
 
+strEvalStmt (For pos t ident1 ident2 stmt) =
+  strEvalStmt stmt >>= \s -> return $ For pos t ident1 ident2 s
+
 strEvalStmt (SExp pos expr) = strEvalExpr expr >>= \(_, e) -> return (SExp pos e)
 
 strEvalStmt stmt = return stmt
@@ -106,6 +112,12 @@ strEvalExpr (EApp pos ident exprs) = do
   return (b, EApp pos ident (map snd evals))
 
 strEvalExpr e@EString{} = return (True, e)
+
+strEvalExpr (ENewArr pos t expr) =
+ strEvalExpr expr >>= \(_, e) -> return (False, ENewArr pos t e)
+
+strEvalExpr (EAccArr pos ident expr) =
+  isString ident >>= \b -> return (b, EAccArr pos ident expr)
 
 strEvalExpr (Not pos expr) =
   strEvalExpr expr >>= \(_, e) -> return (False, Not pos e)

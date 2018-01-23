@@ -8,6 +8,9 @@ import Parser.AbsLatte
 
 type Position = Maybe (Int, Int)
 
+maxArrSize :: Integer
+maxArrSize = 1024
+
 inbuildFunctions :: [TopDef Position]
 inbuildFunctions =
   [

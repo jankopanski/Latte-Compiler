@@ -221,6 +221,16 @@ checkStmt (While pos expr stmt) = do
   unless (exprtype == Bool pos) $ throwError (TypeMismatchAnonymous exprtype)
   checkStmt stmt
 
+checkStmt (For pos t (Ident name1) (Ident name2) stmt) = do
+  marrtype <- lift $ getVarType name2
+  when (isNothing marrtype) $ throwError (UndefinedVariable name2 pos)
+  let arrtype = fromJust marrtype
+  unless (arrtype == Arr pos t) $ throwError (TypeMismatch name1 arrtype (Arr pos t))
+  inenv <- lift getInner
+  lift $ putInner (Map.insert name1 t inenv)
+  checkStmt stmt
+  lift $ putInner inenv
+
 checkStmt (SExp _ expr) = void $ checkExpr expr
 
 checkVarMatch :: Position -> Ident -> Type Position -> StatementChecker ()
@@ -262,6 +272,19 @@ checkExpr (EApp pos (Ident name) exprs) = do
 checkExpr (ELitInt pos _) = return $ Int pos
 
 checkExpr (EString pos _) = return $ Str pos
+
+checkExpr (ENewArr _ t@Void{} _) = throwError (TypeMismatchAnonymous t)
+checkExpr (ENewArr _ t@Fun{} _) = throwError (TypeMismatchAnonymous t)
+checkExpr (ENewArr pos t _) = return $ Arr pos t
+
+checkExpr (EAccArr pos (Ident name) expr) = do
+  exprtype <- checkExpr expr
+  unless (exprtype == Int pos) $ throwError (TypeMismatchAnonymous $ Int pos)
+  marrtype <- lift $ getVarType name
+  when (isNothing marrtype) $ throwError (UndefinedVariable name pos)
+  case fromJust marrtype of
+    Arr _ t -> return t
+    _ -> throwError (UnexpectedError pos)
 
 checkExpr (Neg pos expr) = checkUnOp expr (Int pos)
 
