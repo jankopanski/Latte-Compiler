@@ -2,7 +2,7 @@ module Frontend.StaticEvaluation where
 
 -- Imports --
 
-import Frontend.Globals (Position)
+import Frontend.Globals (Position, maxArrSize)
 import Parser.AbsLatte
 
 -- Top functions --
@@ -77,7 +77,11 @@ evalExpr (EApp pos ident exprs) = EApp pos ident (map evalExpr exprs)
 
 evalExpr (EString pos s) = EString pos (read s)
 
-evalExpr (ENewArr pos t expr) = ENewArr pos t (evalExpr expr)
+evalExpr (ENewArr pos t expr) = --ENewArr pos t (evalExpr expr)
+  let expr' = case evalExpr expr of
+        ELitInt p n -> if n <= maxArrSize then ELitInt p n else ELitInt p maxArrSize
+        _ -> ELitInt pos maxArrSize
+  in ENewArr pos t expr'
 
 evalExpr (EAccArr pos ident expr) = EAccArr pos ident (evalExpr expr)
 

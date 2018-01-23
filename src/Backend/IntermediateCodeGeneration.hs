@@ -240,6 +240,8 @@ genExpr (EString () s) = do
     ICall (Ident "_allocString") 2,
     IBinOp ADD ESP (Imm (2*wordLen))])
 
+genExpr (ENewArr () t expr) = 
+
 genExpr (Neg () expr) = genUnOp NEG expr
 
 genExpr expr@Not{} = genCondInit expr
